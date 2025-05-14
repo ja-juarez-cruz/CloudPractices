@@ -1,0 +1,20 @@
+# Terraform state
+terraform.tfstate
+terraform.tfstate.backup
+
+# Crash log
+crash.log
+
+# Terraform working dir
+.terraform/
+
+# Sensitive variable definitions
+*.tfvars
+
+# IDE / OS stuff
+*.log
+.DS_Store
+*.swp
+
+# zip files
+*.zip
