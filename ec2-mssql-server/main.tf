@@ -41,7 +41,7 @@ resource "aws_key_pair" "deployer" {
 
 # --------------------------------------------
 # Crear Security Group para permitir acceso
-# al puerto 1433 (SQL Server) desde tu IP
+# al puerto 1433 (SQL Server) publico y ssh solo desde tu IP
 # --------------------------------------------
 resource "aws_security_group" "mssql_sg" {
   name        = "mssql-sg"
@@ -49,7 +49,7 @@ resource "aws_security_group" "mssql_sg" {
   vpc_id      = data.aws_vpc.default.id
 
   # Permiter conexiones por el puerto 1433 
-  # Desde desde cualquier IP
+  # Desde cualquier IP
   ingress {
     description = "Acceso a base de datos MSSQL desde cualquier IP"
     from_port   = 1433
