@@ -1,0 +1,653 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+	xmlns:tns="http://dto.eis.pasarela.hubpagos.bytesw.com/"
+	targetNamespace="http://dto.eis.pasarela.hubpagos.bytesw.com/" version="1.0">
+
+	<!-- GET_SESSION -->
+
+	<xs:element name="GetSessionRequest">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="canal" type="tns:stringRequiredTwo" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="GetSessionResponse">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="error" type="tns:error" nillable="true" />
+				<xs:element name="sesionId" type="xs:string" nillable="true" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+
+	<!-- GET_BILLERS -->
+	
+	<xs:element name="GetBillersRequest">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="sesionId" type="tns:stringRequiredForty" />
+				<!-- campos boton -->
+				<xs:element name="colector" type="xs:int" nillable="true" maxOccurs="1" minOccurs="0" />
+				<xs:element name="webSession" type="xs:string" nillable="true" maxOccurs="1" minOccurs="0" />
+				<xs:element name="ip" type="xs:string" nillable="true" maxOccurs="1" minOccurs="0" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="GetBillersResponse">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="error" type="tns:error" nillable="true" />
+				<xs:element name="cobranzas" type="tns:cobranza" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+	
+	<!-- GET_BALANCE -->
+	
+	<xs:element name="GetBalanceRequest">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="sesionId" type="tns:stringRequiredForty" />				
+				<xs:element name="facturador" type="xs:int" nillable="false" />
+				<xs:element name="cobranza" type="xs:int" nillable="false" />
+				<xs:element name="servicio" type="xs:int" nillable="false" />
+				<xs:element name="idTrxColector" type="xs:long" nillable="false" />
+				<xs:element name="idConsulta" type="tns:stringRequiredForty" />
+				<xs:element name="camposCobranza" type="tns:camposCobranza" nillable="false" />
+				<xs:element name="codigoIdioma" type="tns:stringTwo" nillable="true" />
+				<!-- campos boton -->
+				<xs:element name="colector" type="xs:int" nillable="true" maxOccurs="1" minOccurs="0" />
+                <xs:element name="webSession" type="xs:string" nillable="true" maxOccurs="1" minOccurs="0" />
+                <xs:element name="ip" type="xs:string" nillable="true" maxOccurs="1" minOccurs="0" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="GetBalanceResponse">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="error" type="tns:error" nillable="true" />
+				<xs:element name="camposCobranza" type="tns:camposCobranza" nillable="true" />
+				<xs:element name="detallesCobranza" type="tns:detallesCobranza" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+
+	<!-- GET_BALANCE_INFO -->
+
+	<xs:element name="GetBalanceInfoRequest">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="sesionId" type="tns:stringRequiredForty" />
+				<xs:element name="facturador" type="xs:int" />
+				<xs:element name="cobranza" type="xs:int" />
+				<xs:element name="servicio" type="xs:int" />
+				<xs:element name="idTrxColector" type="xs:long" />
+				<xs:element name="idConsulta" type="tns:stringRequiredForty" />
+				<xs:element name="camposCobranza" type="tns:camposCobranza" />
+				<xs:element name="codigoIdioma" type="tns:stringTwo" nillable="true" />
+				<!-- campos boton -->
+				<xs:element name="colector" type="xs:int" nillable="true" minOccurs="0" />
+				<xs:element name="webSession" type="xs:string" nillable="true" minOccurs="0" />
+				<xs:element name="ip" type="xs:string" nillable="true" minOccurs="0" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="GetBalanceInfoResponse">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="error" type="tns:error" nillable="true"/>
+				<xs:element name="camposCobranza" type="tns:camposCobranza" nillable="true" />
+				<xs:element name="detallesCobranza" type="tns:detallesCobranza" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+				<xs:element name="documentosCobranza" type="tns:detallesCobranza" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+
+	<!-- PAYBILL -->
+	
+	<xs:element name="PayBillRequest">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="sesionId" type="tns:stringRequiredForty" />
+				<xs:element name="facturador" type="xs:int" nillable="false" />
+				<xs:element name="cobranza" type="xs:int" nillable="false" />
+				<xs:element name="servicio" type="xs:int" nillable="false" />
+				<xs:element name="idTrxColector" type="xs:long" nillable="false" />
+				<xs:element name="camposCobranza" type="tns:camposCobranza" nillable="false" />
+				<xs:element name="subTotal" type="xs:decimal" nillable="false" />
+				<xs:element name="impuestos" type="xs:decimal" nillable="false" />
+				<xs:element name="total" type="xs:decimal" nillable="false" />
+				<xs:element name="autorizacionDebitoColector" type="xs:long" nillable="false" />
+				<xs:element name="idPago" type="tns:stringRequiredForty" />
+				<xs:element name="moneda" type="tns:stringRequiredThree" />
+				<xs:element name="numeroCuenta" type="xs:integer" nillable="true" />
+				<xs:element name="producto" type="xs:int" nillable="true" />
+				<xs:element name="codigoIdioma" type="tns:stringTwo" nillable="true" />
+				<!-- campos boton -->
+				<xs:element name="aliasUsuario" type="xs:string" nillable="true" maxOccurs="1" minOccurs="0" />
+				<xs:element name="pagoConveniencia" type="xs:decimal" nillable="true" maxOccurs="1" minOccurs="0" />
+                <xs:element name="colector" type="xs:int" nillable="true" maxOccurs="1" minOccurs="0" />
+                <xs:element name="webSession" type="xs:string" nillable="true" maxOccurs="1" minOccurs="0" />
+                <xs:element name="ip" type="xs:string" nillable="true" maxOccurs="1" minOccurs="0"  />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="PayBillResponse">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="error" type="tns:error" nillable="true" />
+				<xs:element name="autorizacionFacturador" type="xs:string" nillable="true" />
+				<xs:element name="camposCobranza" type="tns:camposCobranza" nillable="true" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+
+	<!-- GET_BILLERS_INFO -->
+
+	<xs:element name="GetBillersInfoRequest">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="sesionId" type="tns:stringRequiredForty" />
+				<!-- campos boton -->
+				<xs:element name="colector" type="xs:int" />
+				<xs:element name="canal" type="tns:stringRequiredTwo" />
+				<xs:element name="idioma" type="tns:stringRequiredTwo" />
+				<xs:element name="aliasUsuario" type="xs:string" />
+				<xs:element name="webSession" type="xs:string" nillable="true" maxOccurs="1" minOccurs="0" />
+				<xs:element name="ip" type="xs:string" nillable="true" maxOccurs="1" minOccurs="0" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="GetBillersInfoResponse">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="error" type="tns:error" nillable="true" />
+				<xs:element name="listaCobranzas" type="tns:cobranzaInfo" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+				<xs:element name="cobranzasFavoritas" type="tns:cobranzaInfo" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+				<xs:element name="cobranzasRecientes" type="tns:cobranzaInfo" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+				<xs:element name="mensajesColector" type="tns:colectorMensaje" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+				<xs:element name="productosColector" type="tns:productoColector" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+				<xs:element name="recordatorio" type="tns:recordatorio" minOccurs="0" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+
+	<!-- GET_SERVICE_INFO -->
+
+	<xs:element name="GetServiceInfoRequest">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="sesionId" type="tns:stringRequiredForty" />
+				<!-- campos boton -->
+				<xs:element name="colector" type="xs:int" />
+				<xs:element name="cobranza" type="xs:int" />
+				<xs:element name="idServicio" type="xs:int" />
+				<xs:element name="servicio" type="xs:int" />
+				<xs:element name="versionCampos" type="xs:int" />
+				<xs:element name="idioma" type="tns:stringRequiredTwo" />
+				<xs:element name="aliasUsuario" type="xs:string" />
+				<xs:element name="webSession" type="xs:string" nillable="true" maxOccurs="1" minOccurs="0" />
+				<xs:element name="ip" type="xs:string" nillable="true" maxOccurs="1" minOccurs="0" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="GetServiceInfoResponse">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="error" type="tns:error" nillable="true" />
+				<xs:element name="listaCampos" type="tns:cobranzaCampo" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+				<xs:element name="listaDetalles" type="tns:cobranzaCampo" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+				<xs:element name="mensajesCobranzaConsultaSaldos" type="tns:cobranzaMensaje" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+				<xs:element name="mensajesCobranzaPantallaInicial" type="tns:cobranzaMensaje" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+				<xs:element name="mensajesCobranzaPantallaResultados" type="tns:cobranzaMensaje" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+				<xs:element name="valoresFavoritos" type="tns:cobranzaCampoValorFavorito" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+
+	<!-- QUERYPAY -->
+
+	<xs:element name="QueryPayRequest">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="sesionId" type="tns:stringRequiredForty" />
+				<xs:element name="facturador" type="xs:int"/>
+				<xs:element name="cobranza" type="xs:int" />
+				<xs:element name="servicio" type="xs:string" nillable="false"/>
+				<xs:element name="idTrxColector" type="xs:int"/>
+				<xs:element name="autorizacionDebitoColector" type="xs:long"/>
+				<xs:element name="idConsultaPago" type="tns:stringRequiredForty"/>
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+
+	<xs:element name="QueryPayResponsePasarela" nillable="true">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="ID" type="xs:int"/>
+				<xs:element name="ALIAS_USUARIO" type="xs:string" minOccurs="0"/>
+				<xs:element name="AUT_DEBITO_REVERSA" type="xs:int" minOccurs="0"/>
+				<xs:element name="AUTORIZACION_FACTURADOR" type="xs:string" minOccurs="0"/>
+				<xs:element name="CANAL" type="xs:string" minOccurs="0"/>
+				<xs:element name="COBRANZA" type="xs:int" minOccurs="0"/>
+				<xs:element name="CODIGO_ERROR" type="xs:int" minOccurs="0"/>
+				<xs:element name="COLECTOR" type="xs:int" minOccurs="0"/>
+				<xs:element name="CORRELATIVO" type="xs:string" minOccurs="0"/>
+				<xs:element name="CVV2" type="xs:int" minOccurs="0"/>
+				<xs:element name="DESCRIPCION_ERROR" type="xs:string" minOccurs="0"/>
+				<xs:element name="ESTADO" type="xs:int" minOccurs="0"/>
+				<xs:element name="FACTURADOR" type="xs:int" minOccurs="0"/>
+				<xs:element name="HORA_FECHA_INGRESO" type="xs:dateTime" minOccurs="0"/>
+				<xs:element name="HORA_FECHA_RESPUESTA" type="xs:dateTime" minOccurs="0"/>
+				<xs:element name="FECHA_VENCIMIENTO_TC" type="xs:int" minOccurs="0"/>
+				<xs:element name="ID_CONSULTA_PAGO" type="xs:string" minOccurs="0"/>
+				<xs:element name="ID_LOG_HTTP" type="xs:int" minOccurs="0"/>
+				<xs:element name="ID_LOG_TRAMA" type="xs:int" minOccurs="0"/>
+				<xs:element name="IDIOMA" type="xs:string" minOccurs="0"/>
+				<xs:element name="IMPUESTO" type="xs:decimal" minOccurs="0"/>
+				<xs:element name="IP" type="xs:string" minOccurs="0"/>
+				<xs:element name="MONEDA" type="xs:string" minOccurs="0"/>
+				<xs:element name="MONTO_SIN_IMPUESTO" type="xs:decimal" minOccurs="0"/>
+				<xs:element name="MOTIVO_REVERSA" type="xs:string" minOccurs="0"/>
+				<xs:element name="NO_CUENTA" type="xs:int" minOccurs="0"/>
+				<xs:element name="NODO" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_STRING_01" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_STRING_10" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_STRING_11" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_STRING_12" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_STRING_13" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_STRING_14" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_STRING_15" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_STRING_02" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_STRING_03" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_STRING_04" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_STRING_05" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_STRING_06" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_STRING_07" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_STRING_08" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_STRING_09" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_RESPUESTA_14" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_RESPUESTA_5" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_RESPUESTA_4" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_RESPUESTA_10" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_RESPUESTA_12" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_RESPUESTA_2" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_RESPUESTA_9" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_RESPUESTA_8" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_RESPUESTA_11" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_RESPUESTA_15" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_RESPUESTA_6" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_RESPUESTA_7" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_RESPUESTA_13" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_RESPUESTA_3" type="xs:string" minOccurs="0"/>
+				<xs:element name="PARAMETRO_RESPUESTA_1" type="xs:string" minOccurs="0"/>
+				<xs:element name="PRODUCTO" type="xs:int" minOccurs="0"/>
+				<xs:element name="SERVICIO" type="xs:string" minOccurs="0"/>
+				<xs:element name="SERVICIO_COBRANZA" type="xs:int" minOccurs="0"/>
+				<xs:element name="TIPO" type="xs:string" minOccurs="0"/>
+				<xs:element name="TOKEN" type="xs:string" minOccurs="0"/>
+				<xs:element name="TOTAL" type="xs:decimal" minOccurs="0"/>
+				<xs:element name="VERSION" type="xs:short" minOccurs="0"/>
+				<xs:element name="VERSION_CAMPOS" type="xs:int" minOccurs="0"/>
+				<xs:element name="WEB_SESSION" type="xs:string" minOccurs="0"/>
+				<xs:element name="codigoError" type="xs:int" minOccurs="0"/>
+				<xs:element name="descripcionError" type="xs:string" minOccurs="0"/>
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+
+	<xs:element name="QueryPayResponse">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="error" type="tns:error" nillable="true" />
+				<xs:element name="autorizacionFacturador" type="xs:string" nillable="true" />
+				<xs:element name="camposCobranza" type="tns:camposCobranza" nillable="true" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+
+	<!-- COMMONS -->
+	
+	<xs:simpleType name="stringTwo">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="2" />
+		</xs:restriction>
+	</xs:simpleType>
+	
+	<xs:simpleType name="stringRequiredTwo">
+		<xs:restriction base="xs:string">
+			<xs:minLength value="1" />
+			<xs:maxLength value="2" />
+		</xs:restriction>
+	</xs:simpleType>
+	
+	<xs:simpleType name="stringRequiredThree">
+		<xs:restriction base="xs:string">
+			<xs:minLength value="3" />
+			<xs:maxLength value="3" />
+		</xs:restriction>
+	</xs:simpleType>
+		
+	<xs:simpleType name="stringRequiredForty">
+		<xs:restriction base="xs:string">
+			<xs:minLength value="1" />
+			<xs:maxLength value="40" />
+		</xs:restriction>
+	</xs:simpleType>
+	
+	<xs:simpleType name="stringForty">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="40" />
+		</xs:restriction>
+	</xs:simpleType>
+	
+	<xs:complexType name="error">
+		<xs:sequence>
+			<xs:element name="codigo" type="xs:int" nillable="true" />
+			<xs:element name="descripcion" type="xs:string" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="cobranza">
+		<xs:sequence>
+			<xs:element name="codigo" type="xs:int" nillable="true" />
+			<xs:element name="nombre" type="xs:string" nillable="true" />
+		</xs:sequence>
+	</xs:complexType>
+		
+	<xs:complexType name="camposCobranza">
+		<xs:sequence>
+			<xs:element name="campo1" type="xs:string" nillable="true" />
+			<xs:element name="campo2" type="xs:string" nillable="true" />
+			<xs:element name="campo3" type="xs:string" nillable="true" />
+			<xs:element name="campo4" type="xs:string" nillable="true" />
+			<xs:element name="campo5" type="xs:string" nillable="true" />
+			<xs:element name="campo6" type="xs:string" nillable="true" />
+			<xs:element name="campo7" type="xs:string" nillable="true" />
+			<xs:element name="campo8" type="xs:string" nillable="true" />
+			<xs:element name="campo9" type="xs:string" nillable="true" />
+			<xs:element name="campo10" type="xs:string" nillable="true" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="detallesCobranza">
+		<xs:sequence>
+			<xs:element name="detalle1" type="xs:string" nillable="true" />
+			<xs:element name="detalle2" type="xs:string" nillable="true" />
+			<xs:element name="detalle3" type="xs:string" nillable="true" />
+			<xs:element name="detalle4" type="xs:string" nillable="true" />
+			<xs:element name="detalle5" type="xs:string" nillable="true" />
+			<xs:element name="detalle6" type="xs:string" nillable="true" />
+			<xs:element name="detalle7" type="xs:string" nillable="true" />
+			<xs:element name="detalle8" type="xs:string" nillable="true" />
+			<xs:element name="detalle9" type="xs:string" nillable="true" />
+			<xs:element name="detalle10" type="xs:string" nillable="true" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="cobranzaInfo">
+		<xs:sequence>
+			<xs:element name="id" type="xs:int" minOccurs="0" />
+			<xs:element name="codigo" type="xs:int" minOccurs="0" />
+			<xs:element name="nombre" type="xs:string" minOccurs="0" />
+			<xs:element name="tipo" type="tns:tipoCobranza" minOccurs="0" />
+			<xs:element name="moneda" type="xs:string" minOccurs="0" />
+			<xs:element name="simboloMoneda" type="xs:string" minOccurs="0" />
+			<xs:element name="estado" type="xs:boolean" minOccurs="0" />
+			<xs:element name="tipoPago" type="tns:tipoPago" minOccurs="0" />
+			<xs:element name="palabraClave" type="xs:string" minOccurs="0" />
+			<xs:element name="logo" type="xs:string" minOccurs="0" />
+			<xs:element name="codigoFacturador" type="xs:int" minOccurs="0" />
+			<xs:element name="nombreFacturador" type="xs:string" minOccurs="0" />
+			<xs:element name="codigoCategoria" type="xs:int" minOccurs="0" />
+			<xs:element name="nombreCategoria" type="xs:string" minOccurs="0" />
+			<xs:element name="logoCategoria" type="xs:string" minOccurs="0" />
+			<xs:element name="tiempoMaximoEspera" type="xs:int" minOccurs="0" />
+			<xs:element name="umbralAceptado" type="xs:int" minOccurs="0" />
+			<xs:element name="servicios" type="tns:servicio" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+			<xs:element name="usaCuentaReal" type="xs:boolean" minOccurs="0" />
+			<xs:element name="afectaLiquidacion" type="xs:boolean" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:simpleType name="tipoCobranza">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="L" />
+			<xs:enumeration value="O" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="tipoPago">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="STO" />
+			<xs:enumeration value="PMI" />
+			<xs:enumeration value="CVA" />
+			<xs:enumeration value="IMA" />
+			<xs:enumeration value="IME" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:complexType name="servicio">
+		<xs:sequence>
+			<xs:element name="id" type="xs:int" minOccurs="0" />
+			<xs:element name="codigo" type="xs:int" minOccurs="0" />
+			<xs:element name="descripcion" type="xs:string" minOccurs="0" />
+			<xs:element name="usaConsulta" type="xs:boolean" minOccurs="0" />
+			<xs:element name="versionCampos" type="xs:int" minOccurs="0" />
+			<xs:element name="urlLogo" type="xs:string" minOccurs="0" />
+			<xs:element name="manejaDetalle" type="xs:boolean" minOccurs="0" />
+			<xs:element name="cantidadCamposEnDetalle" type="xs:int" minOccurs="0" />
+			<xs:element name="tipoSeleccion" type="tns:parametroSeleccion" minOccurs="0" />
+			<xs:element name="enviaMultiplesTransacciones" type="xs:boolean" minOccurs="0" />
+			<xs:element name="valorFavorito" type="xs:string" minOccurs="0" />
+			<xs:element name="tipoPago" type="tns:parametroPago" minOccurs="0" />
+			<xs:element name="campos" type="tns:cobranzaCampo" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:simpleType name="parametroSeleccion">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="SIM" />
+			<xs:enumeration value="MUL" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="parametroPago">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="P" />
+			<xs:enumeration value="C" />
+			<xs:enumeration value="R" />
+			<xs:enumeration value="T" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:complexType name="cobranzaCampo">
+		<xs:sequence>
+			<xs:element name="campoAfectoImpuesto" type="xs:int" minOccurs="0" />
+			<xs:element name="id" type="xs:int" minOccurs="0" />
+			<xs:element name="codigo" type="xs:int" minOccurs="0" />
+			<xs:element name="descripcion" type="xs:string" minOccurs="0" />
+			<xs:element name="ordenPantalla" type="xs:int" minOccurs="0" />
+			<xs:element name="tipoDato" type="tns:tipoDato" minOccurs="0" />
+			<xs:element name="longitud" type="xs:int" minOccurs="0" />
+			<xs:element name="longitudMinima" type="xs:int" minOccurs="0" />
+			<xs:element name="tipoCampo" type="tns:tipoCampo" minOccurs="0" />
+			<xs:element name="cantidadDecimales" type="xs:int" minOccurs="0" />
+			<xs:element name="separadorFecha" type="xs:string" minOccurs="0" />
+			<xs:element name="formatoFecha" type="tns:formatoFecha" minOccurs="0" />
+			<xs:element name="ayuda" type="xs:string" minOccurs="0" />
+			<xs:element name="esSeleccionable" type="xs:boolean" minOccurs="0" />
+			<xs:element name="esFavorito" type="xs:boolean" minOccurs="0" />
+			<xs:element name="esImpuesto" type="xs:boolean" minOccurs="0" />
+			<xs:element name="esTotal" type="xs:boolean" minOccurs="0" />
+			<xs:element name="esIdPago" type="xs:boolean" minOccurs="0" />
+			<xs:element name="esIdConsulta" type="xs:boolean" minOccurs="0" />
+			<xs:element name="tipoImpuesto" type="tns:tipoImpuesto" minOccurs="0" />
+			<xs:element name="porcentajeImpuesto" type="xs:double" minOccurs="0" />
+			<xs:element name="accionPagoMinimo" type="tns:accionCampo" minOccurs="0" />
+			<xs:element name="accionTotal" type="tns:accionCampo" minOccurs="0" />
+			<xs:element name="esCobroPorConveniencia" type="xs:boolean" minOccurs="0" />
+			<xs:element name="esSaldoEnFavorito" type="xs:boolean" minOccurs="0" />
+			<xs:element name="ingresoObligatorioConsulta" type="xs:boolean" minOccurs="0" />
+			<xs:element name="ingresoObligatorioPago" type="xs:boolean" minOccurs="0" />
+			<xs:element name="listaDescripcion" type="tns:cobranzaCampoDescripcion" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+			<xs:element name="permiteIngresoConsulta" type="xs:boolean" minOccurs="0" />
+			<xs:element name="permiteIngresoPago" type="xs:boolean" minOccurs="0" />
+			<xs:element name="posicionEnviaConsultaSaldo" type="xs:int" minOccurs="0" />
+			<xs:element name="posicionEnviaPago" type="xs:int" minOccurs="0" />
+			<xs:element name="posicionRecibeConsultaSaldo" type="xs:int" minOccurs="0" />
+			<xs:element name="posicionRecibePago" type="xs:int" minOccurs="0" />
+			<xs:element name="visibleConsulta" type="xs:boolean" minOccurs="0" />
+			<xs:element name="visiblePago" type="xs:boolean" minOccurs="0" />
+			<xs:element name="visibleResultado" type="xs:boolean" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:simpleType name="tipoDato">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="A" />
+			<xs:enumeration value="N" />
+			<xs:enumeration value="D" />
+			<xs:enumeration value="F" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:complexType name="tipoCampo">
+		<xs:complexContent>
+			<xs:extension base="tns:baseObject">
+				<xs:sequence>
+					<xs:element name="codigo" type="xs:int" minOccurs="0" />
+					<xs:element name="esValorSesion" type="xs:boolean" minOccurs="0" />
+					<xs:element name="id" type="xs:int" minOccurs="0" />
+					<xs:element name="nombre" type="xs:string" minOccurs="0" />
+					<xs:element name="valorSesion" type="tns:campoSesion" minOccurs="0" />
+					<xs:element name="version" type="xs:short" minOccurs="0" />
+				</xs:sequence>
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+
+	<xs:complexType name="baseObject">
+		<xs:sequence>
+			<xs:element name="atributoLog" type="xs:string" minOccurs="0" />
+			<xs:element name="ignoreLog" type="xs:boolean" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:simpleType name="formatoFecha">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="DDMMAAAA" />
+			<xs:enumeration value="AAAAMMDD" />
+			<xs:enumeration value="MMDDAAAA" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="campoSesion">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="numero" />
+			<xs:enumeration value="alias" />
+			<xs:enumeration value="nombre" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:complexType name="tipoImpuesto">
+		<xs:complexContent>
+			<xs:extension base="tns:baseObject">
+				<xs:sequence>
+					<xs:element name="codigo" type="xs:int" minOccurs="0" />
+					<xs:element name="descripcion" type="xs:string" minOccurs="0" />
+					<xs:element name="id" type="xs:int" minOccurs="0" />
+					<xs:element name="porcentaje" type="xs:double" minOccurs="0" />
+					<xs:element name="version" type="xs:short" minOccurs="0" />
+				</xs:sequence>
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+
+	<xs:simpleType name="accionCampo">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="S" />
+			<xs:enumeration value="R" />
+			<xs:enumeration value="N" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:complexType name="cobranzaCampoDescripcion">
+		<xs:sequence>
+			<xs:element name="descripcion" type="xs:string" minOccurs="0" />
+			<xs:element name="id" type="xs:int" minOccurs="0" />
+			<xs:element name="valor" type="xs:string" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="colectorMensaje">
+		<xs:sequence>
+			<xs:element name="descripcion" type="xs:string" minOccurs="0" />
+			<xs:element name="fechaFinVigencia" type="xs:dateTime" minOccurs="0" />
+			<xs:element name="fechaInicioVigencia" type="xs:dateTime" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="productoColector">
+		<xs:sequence>
+			<xs:element name="codigo" type="xs:string" minOccurs="0" />
+			<xs:element name="descripcion" type="xs:string" minOccurs="0" />
+			<xs:element name="esTC" type="xs:boolean" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="recordatorio">
+		<xs:sequence>
+			<xs:element name="activo" type="xs:boolean" />
+			<xs:element name="favorito" type="xs:boolean" />
+			<xs:element name="historico" type="tns:recordatorioHistoricoPago" nillable="true" minOccurs="0" maxOccurs="unbounded" />
+			<xs:element name="predeterminado" type="xs:boolean" />
+			<xs:element name="texto" type="xs:string" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="recordatorioHistoricoPago">
+		<xs:sequence>
+			<xs:element name="cantidad" type="xs:int" minOccurs="0" />
+			<xs:element name="cobranza" type="xs:int" minOccurs="0" />
+			<xs:element name="descripcion" type="xs:string" minOccurs="0" />
+			<xs:element name="fechaHora" type="xs:dateTime" minOccurs="0" />
+			<xs:element name="servicio" type="xs:int" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="cobranzaMensaje">
+		<xs:sequence>
+			<xs:element name="descripcion" type="xs:string" minOccurs="0" />
+			<xs:element name="fechaFin" type="xs:dateTime" minOccurs="0" />
+			<xs:element name="fechaInicio" type="xs:dateTime" minOccurs="0" />
+			<xs:element name="tipoMensaje" type="tns:tipoMensaje" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="cobranzaCampoValorFavorito">
+		<xs:sequence>
+			<xs:element name="activo" type="xs:boolean" minOccurs="0" />
+			<xs:element name="aliasUsuario" type="xs:string" minOccurs="0" />
+			<xs:element name="cobranza" type="xs:int" minOccurs="0" />
+			<xs:element name="colector" type="xs:int" minOccurs="0" />
+			<xs:element name="id" type="xs:integer" minOccurs="0" />
+			<xs:element name="nombreFavorito" type="xs:string" minOccurs="0" />
+			<xs:element name="servicio" type="xs:int" minOccurs="0" />
+			<xs:element name="servicioId" type="xs:int" minOccurs="0" />
+			<xs:element name="valorFavorito" type="xs:string" minOccurs="0" />
+			<xs:element name="version" type="xs:short" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:simpleType name="tipoMensaje">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="PI" />
+			<xs:enumeration value="CS" />
+			<xs:enumeration value="RE" />
+		</xs:restriction>
+	</xs:simpleType>
+
+
+</xs:schema>

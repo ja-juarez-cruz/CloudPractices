@@ -18,3 +18,6 @@ crash.log
 
 # zip files
 *.zip
+
+#Cache python files
+__pycache__/

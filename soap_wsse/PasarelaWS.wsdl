@@ -1,0 +1,297 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<wsdl:definitions
+	xmlns="http://schemas.xmlsoap.org/wsdl/" 
+	xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+	xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" 
+	xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+	xmlns:schema="http://dto.eis.pasarela.hubpagos.bytesw.com/"
+	xmlns:tns="http://dto.eis.pasarela.hubpagos.bytesw.com/"
+	targetNamespace="http://dto.eis.pasarela.hubpagos.bytesw.com/"
+	xmlns:wsp="http://schemas.xmlsoap.org/ws/2004/09/policy" 
+    xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd" 
+    xmlns:wsaws="http://www.w3.org/2005/08/addressing" 
+    xmlns:sp="http://schemas.xmlsoap.org/ws/2005/07/securitypolicy" 
+    xmlns:sp13="http://docs.oasis-open.org/ws-sx/ws-securitypolicy/200802"
+    xmlns:sc="http://schemas.sun.com/2006/03/wss/server" 
+    xmlns:wspp="http://java.sun.com/xml/ns/wsit/policy" >
+
+	<!-- Schema Import -->
+
+	<wsdl:types>
+		<xsd:schema>
+			<xsd:import namespace="http://dto.eis.pasarela.hubpagos.bytesw.com/"
+				schemaLocation="pasarela.xsd" />
+		</xsd:schema>
+	</wsdl:types>
+
+	<!-- Messages: Request and Response used in portType -->
+
+	<wsdl:message name="GetSessionRequest">
+		<wsdl:part name="parameters" element="schema:GetSessionRequest" />
+	</wsdl:message>
+	<wsdl:message name="GetSessionResponse">
+		<wsdl:part name="parameters" element="schema:GetSessionResponse" />
+	</wsdl:message>
+
+	<wsdl:message name="GetBillersRequest">
+		<wsdl:part name="parameters" element="schema:GetBillersRequest" />
+	</wsdl:message>
+	<wsdl:message name="GetBillersResponse">
+		<wsdl:part name="parameters" element="schema:GetBillersResponse" />
+	</wsdl:message>
+
+	<wsdl:message name="GetBalanceRequest">
+		<wsdl:part name="parameters" element="schema:GetBalanceRequest" />
+	</wsdl:message>
+	<wsdl:message name="GetBalanceResponse">
+		<wsdl:part name="parameters" element="schema:GetBalanceResponse" />
+	</wsdl:message>
+
+	<wsdl:message name="GetBalanceInfoRequest">
+		<wsdl:part name="parameters" element="schema:GetBalanceInfoRequest" />
+	</wsdl:message>
+	<wsdl:message name="GetBalanceInfoResponse">
+		<wsdl:part name="parameters" element="schema:GetBalanceInfoResponse" />
+	</wsdl:message>
+
+	<wsdl:message name="PayBillRequest">
+		<wsdl:part name="parameters" element="schema:PayBillRequest" />
+	</wsdl:message>
+	<wsdl:message name="PayBillResponse">
+		<wsdl:part name="parameters" element="schema:PayBillResponse" />
+	</wsdl:message>
+
+	<wsdl:message name="GetBillersInfoRequest">
+		<wsdl:part name="parameters" element="schema:GetBillersInfoRequest" />
+	</wsdl:message>
+	<wsdl:message name="GetBillersInfoResponse">
+		<wsdl:part name="parameters" element="schema:GetBillersInfoResponse" />
+	</wsdl:message>
+
+	<wsdl:message name="GetServiceInfoRequest">
+		<wsdl:part name="parameters" element="schema:GetServiceInfoRequest" />
+	</wsdl:message>
+	<wsdl:message name="GetServiceInfoResponse">
+		<wsdl:part name="parameters" element="schema:GetServiceInfoResponse" />
+	</wsdl:message>
+
+	<wsdl:message name="QueryPayRequest">
+		<wsdl:part name="parameters" element="schema:QueryPayRequest" />
+	</wsdl:message>
+	<wsdl:message name="QueryPayResponse">
+		<wsdl:part name="parameters" element="schema:QueryPayResponse" />
+	</wsdl:message>
+
+	<!-- PortType used en binding -->
+
+	<wsdl:portType name="PasarelaEndpoint">
+
+		<wsdl:operation name="GetSession">
+			<wsdl:input message="tns:GetSessionRequest" />
+			<wsdl:output message="tns:GetSessionResponse" />
+		</wsdl:operation>
+
+		<wsdl:operation name="GetBillers">
+			<wsdl:input message="tns:GetBillersRequest" />
+			<wsdl:output message="tns:GetBillersResponse" />
+		</wsdl:operation>
+
+		<wsdl:operation name="GetBalance">
+			<wsdl:input message="tns:GetBalanceRequest" />
+			<wsdl:output message="tns:GetBalanceResponse" />
+		</wsdl:operation>
+
+		<wsdl:operation name="GetBalanceInfo">
+			<wsdl:input message="tns:GetBalanceInfoRequest" />
+			<wsdl:output message="tns:GetBalanceInfoResponse" />
+		</wsdl:operation>
+
+		<wsdl:operation name="PayBill">
+			<wsdl:input message="tns:PayBillRequest" />
+			<wsdl:output message="tns:PayBillResponse" />
+		</wsdl:operation>
+
+		<wsdl:operation name="GetBillersInfo">
+			<wsdl:input message="tns:GetBillersInfoRequest" />
+			<wsdl:output message="tns:GetBillersInfoResponse" />
+		</wsdl:operation>
+
+		<wsdl:operation name="GetServiceInfo">
+			<wsdl:input message="tns:GetServiceInfoRequest" />
+			<wsdl:output message="tns:GetServiceInfoResponse" />
+		</wsdl:operation>
+
+		<wsdl:operation name="QueryPay">
+			<wsdl:input message="tns:QueryPayRequest" />
+			<wsdl:output message="tns:QueryPayResponse" />
+		</wsdl:operation>
+
+	</wsdl:portType>
+
+	<!-- Binding: operations -->
+
+	<wsdl:binding name="PasarelaHTTPPortBinding" type="tns:PasarelaEndpoint">
+		<soap:binding style="document"
+			transport="http://schemas.xmlsoap.org/soap/http" />
+
+		<wsdl:operation name="GetSession">
+			<soap:operation soapAction="http://pasarela.hubpagos.bytesw.com/GetSession" />
+			<wsdl:input>
+				<soap:body use="literal" />
+				<wsp:PolicyReference URI="#GetSessionInputPolicy"/>
+			</wsdl:input>
+			<wsdl:output>
+				<soap:body use="literal" />
+				<wsp:PolicyReference URI="#GetSessionOutputPolicy"/>
+			</wsdl:output>
+		</wsdl:operation>
+
+		<wsdl:operation name="GetBillers">
+			<soap:operation soapAction="http://pasarela.hubpagos.bytesw.com/GetBillers" />
+			<wsdl:input>
+				<soap:body use="literal" />
+				<wsp:PolicyReference URI="#SecurityInputPolicy"/>
+			</wsdl:input>
+			<wsdl:output>
+				<soap:body use="literal" />
+				<wsp:PolicyReference URI="#SecurityOutputPolicy"/>
+			</wsdl:output>
+		</wsdl:operation>
+
+		<wsdl:operation name="GetBalance">
+			<soap:operation soapAction="http://pasarela.hubpagos.bytesw.com/GetBalance" />
+			<wsdl:input>
+				<soap:body use="literal" />
+				<wsp:PolicyReference URI="#SecurityInputPolicy"/>
+			</wsdl:input>
+			<wsdl:output>
+				<soap:body use="literal" />
+				<wsp:PolicyReference URI="#SecurityOutputPolicy"/>
+			</wsdl:output>
+		</wsdl:operation>
+
+		<wsdl:operation name="GetBalanceInfo">
+			<soap:operation soapAction="http://pasarela.hubpagos.bytesw.com/GetBalanceInfo" />
+			<wsdl:input>
+				<soap:body use="literal" />
+				<wsp:PolicyReference URI="#SecurityInputPolicy"/>
+			</wsdl:input>
+			<wsdl:output>
+				<soap:body use="literal" />
+				<wsp:PolicyReference URI="#SecurityOutputPolicy"/>
+			</wsdl:output>
+		</wsdl:operation>
+
+		<wsdl:operation name="PayBill">
+			<soap:operation soapAction="http://pasarela.hubpagos.bytesw.com/PayBill" />
+			<wsdl:input>
+				<soap:body use="literal" />
+				<wsp:PolicyReference URI="#SecurityInputPolicy"/>
+			</wsdl:input>
+			<wsdl:output>
+				<soap:body use="literal" />
+				<wsp:PolicyReference URI="#SecurityOutputPolicy"/>
+			</wsdl:output>
+		</wsdl:operation>
+
+		<wsdl:operation name="GetBillersInfo">
+			<soap:operation soapAction="http://pasarela.hubpagos.bytesw.com/GetBillersInfo" />
+			<wsdl:input>
+				<soap:body use="literal" />
+				<wsp:PolicyReference URI="#SecurityInputPolicy"/>
+			</wsdl:input>
+			<wsdl:output>
+				<soap:body use="literal" />
+				<wsp:PolicyReference URI="#SecurityOutputPolicy"/>
+			</wsdl:output>
+		</wsdl:operation>
+
+		<wsdl:operation name="GetServiceInfo">
+			<soap:operation soapAction="http://pasarela.hubpagos.bytesw.com/GetServiceInfo" />
+			<wsdl:input>
+				<soap:body use="literal" />
+				<wsp:PolicyReference URI="#SecurityInputPolicy"/>
+			</wsdl:input>
+			<wsdl:output>
+				<soap:body use="literal" />
+				<wsp:PolicyReference URI="#SecurityOutputPolicy"/>
+			</wsdl:output>
+		</wsdl:operation>
+
+		<wsdl:operation name="QueryPay">
+			<soap:operation soapAction="http://pasarela.hubpagos.bytesw.com/QueryPay" />
+			<wsdl:input>
+				<soap:body use="literal" />
+				<wsp:PolicyReference URI="#SecurityInputPolicy"/>
+			</wsdl:input>
+			<wsdl:output>
+				<soap:body use="literal" />
+				<wsp:PolicyReference URI="#SecurityOutputPolicy"/>
+			</wsdl:output>
+		</wsdl:operation>
+
+
+	</wsdl:binding>
+	
+	<!-- service -->
+
+	<wsdl:service name="PasarelaService">
+		<wsdl:port name="PasarelaHTTPPort" binding="tns:PasarelaHTTPPortBinding">
+			<soap:address
+				location="http://172.30.6.25:5050/servicios-hub/services/PasarelaWS" />
+		</wsdl:port>
+	</wsdl:service>
+
+	<!-- policies -->
+	
+	<wsp:Policy wsu:Id="GetSessionInputPolicy">
+    	<wsp:All>
+    		<sp:UsernameToken sp:IncludeToken="http://schemas.xmlsoap.org/ws/2005/07/securitypolicy/IncludeToken/AlwaysToRecipient">
+    			<wsp:Policy>
+					<sp:WssUsernameToken11 />
+					<sp:HashPassword />
+					<sp13:Created />
+        			<sp13:Nonce />
+				</wsp:Policy> 
+    		</sp:UsernameToken>
+        	<sp:EncryptedParts>
+            		<sp:Header Name="UsernameToken" Namespace="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"/>
+            </sp:EncryptedParts>
+           	<sp:SignedParts>
+                    <sp:Header Name="UsernameToken" Namespace="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"/>
+            </sp:SignedParts>
+        </wsp:All>
+    </wsp:Policy>
+	<wsp:Policy wsu:Id="GetSessionOutputPolicy">
+        <wsp:All>
+        	<sp:EncryptedParts>
+            		<sp:Body />
+            </sp:EncryptedParts>
+           	<sp:SignedParts>
+                    <sp:Body />
+            </sp:SignedParts>
+        </wsp:All>
+    </wsp:Policy>
+        	
+	<wsp:Policy wsu:Id="SecurityInputPolicy">
+    	<wsp:All>
+        	<sp:EncryptedParts>
+            		 <sp:Body />
+            </sp:EncryptedParts>
+           	<sp:SignedParts>
+                     <sp:Body />
+            </sp:SignedParts>
+        </wsp:All>
+    </wsp:Policy>
+	<wsp:Policy wsu:Id="SecurityOutputPolicy">
+        <wsp:All>
+        	<sp:EncryptedParts>
+            		<sp:Body />
+            </sp:EncryptedParts>
+           	<sp:SignedParts>
+                    <sp:Body />
+            </sp:SignedParts>
+        </wsp:All>
+    </wsp:Policy>
+    
+</wsdl:definitions>
