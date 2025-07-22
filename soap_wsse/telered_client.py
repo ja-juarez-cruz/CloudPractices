@@ -74,7 +74,7 @@ class TeleredClient(ClientCustom):
 
             headers = {
                     "Content-Type": "text/xml; charset=utf-8",
-                    "SOAPAction": "GetSession"
+                    "SOAPAction": "http://pasarela.hubpagos.bytesw.com/GetSession"
                 }
             envelope_str = ET.tostring(envelope).decode()
             _logger.info(f"Envelope: {envelope_str}")

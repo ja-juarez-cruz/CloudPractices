@@ -26,7 +26,9 @@ class SecureWSSE:
         ns = {
             "wsse":"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd",
             "soapenv": "http://schemas.xmlsoap.org/soap/envelope/",
-            "dto": "http://dto.eis.pasarela.hubpagos.bytesw.com/"
+            "dto": "http://dto.eis.pasarela.hubpagos.bytesw.com/",
+            'ds': "http://www.w3.org/2000/09/xmldsig#",
+            'enc': "http://www.w3.org/2001/04/xmlenc#"
         }
         wsse_ns = ns["wsse"]        
         header = envelope.find('soapenv:Header', ns)
@@ -51,6 +53,16 @@ class SecureWSSE:
             
             # Insertarlo como primer hijo de Security
             security.insert(0, encrypted_key)
+
+        # Buscar y limpiar SignatureValue
+        """signature_value_elem = security.find('.//ds:SignatureValue', namespaces=ns)
+        if signature_value_elem is not None and signature_value_elem.text:
+            signature_value_elem.text = signature_value_elem.text.replace('\n', '').strip()"""
+
+        # Buscar y limpiar CipherValue en Body
+        """cipher_value_elem = envelope.find('.//soapenv:Body//enc:CipherValue', namespaces=ns)
+        if cipher_value_elem is not None and cipher_value_elem.text:
+            cipher_value_elem.text = cipher_value_elem.text.replace('\n', '').strip()"""
 
         return envelope, headers
 
@@ -138,7 +150,7 @@ class SecureWSSE:
         transform = etree.SubElement(
             transforms,
             QName(ds,'Transform'),
-            Algorithm=ns['ec']
+            Algorithm=xmlsec.Transform.EXCL_C14N
         )
         _logger.info(f"transform: {ET.tostring(transform).decode()}")   
         etree.SubElement(
@@ -176,8 +188,10 @@ class SecureWSSE:
 
         x509_data = etree.SubElement(security_token_ref, QName(ds,'X509Data'))
         x509_issuer_serial = etree.SubElement(x509_data, QName(ds,'X509IssuerSerial'))
-        etree.SubElement(x509_issuer_serial, '{http://www.w3.org/2000/09/xmldsig#}X509IssuerName').text = issuer
-        etree.SubElement(x509_issuer_serial, '{http://www.w3.org/2000/09/xmldsig#}X509SerialNumber').text = str(serial)
+        #etree.SubElement(x509_issuer_serial, '{http://www.w3.org/2000/09/xmldsig#}X509IssuerName').text = issuer
+        #etree.SubElement(x509_issuer_serial, '{http://www.w3.org/2000/09/xmldsig#}X509SerialNumber').text = str(serial)        
+        etree.SubElement(x509_issuer_serial, QName(ds,'X509IssuerName')).text = issuer
+        etree.SubElement(x509_issuer_serial, QName(ds,'X509SerialNumber')).text = str(serial)
  
 
         # Insertar la firma en Security
@@ -193,6 +207,9 @@ class SecureWSSE:
             ctx.sign(signature_node)         
         except xmlsec.Error as e:           
             raise type(e)(f"Fallo en firma XML: {e.message}") from e
+        
+        #Eliminar saltos de lineas
+
             
         
         _logger.info(f"envelope signed: {ET.tostring(envelope).decode()}")
@@ -213,6 +230,7 @@ class SecureWSSE:
         }
         wsse_ns = ns["wsse"]
         wssell = ns['wssell']
+        ds = ns['ds']
 
         body = envelope.find('soapenv:Body', ns)
         header = envelope.find('soapenv:Header', ns)
@@ -263,8 +281,10 @@ class SecureWSSE:
 
         x509_data = etree.SubElement(security_token_ref, '{http://www.w3.org/2000/09/xmldsig#}X509Data')
         x509_issuer_serial = etree.SubElement(x509_data, '{http://www.w3.org/2000/09/xmldsig#}X509IssuerSerial')
-        etree.SubElement(x509_issuer_serial, '{http://www.w3.org/2000/09/xmldsig#}X509IssuerName').text = issuer
-        etree.SubElement(x509_issuer_serial, '{http://www.w3.org/2000/09/xmldsig#}X509SerialNumber').text = str(serial)
+        #etree.SubElement(x509_issuer_serial, '{http://www.w3.org/2000/09/xmldsig#}X509IssuerName').text = issuer
+        #etree.SubElement(x509_issuer_serial, '{http://www.w3.org/2000/09/xmldsig#}X509SerialNumber').text = str(serial)
+        etree.SubElement(x509_issuer_serial, QName(ds,'X509IssuerName')).text = issuer
+        etree.SubElement(x509_issuer_serial, QName(ds,'X509SerialNumber')).text = str(serial)
 
         public_key = cert.public_key()
         encrypted_session_key = public_key.encrypt(
