@@ -21,3 +21,6 @@ crash.log
 
 #Cache python files
 __pycache__/
+
+#Certificates
+*.pem

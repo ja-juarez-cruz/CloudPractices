@@ -6,6 +6,9 @@ import xml.etree.ElementTree as ET
 import os
 from zeep.transports import Transport
 from requests import Session
+from lxml.builder import ElementMaker
+from lxml import etree
+import re
 
 from wsse_client import SecureWSSE
 from aws_lambda_powertools.event_handler.api_gateway import Response
@@ -14,16 +17,6 @@ _logger = logging.getLogger()
 _logger.setLevel(logging.INFO)
 
 logging.basicConfig(level=logging.DEBUG)
-
-logging.getLogger("zeep").setLevel(logging.DEBUG)
-logging.getLogger("requests").setLevel(logging.DEBUG)
-logging.getLogger('urllib3').setLevel(logging.DEBUG)
-logging.getLogger("zeep.transport").setLevel(logging.DEBUG)
-logging.getLogger("http.client").setLevel(logging.DEBUG)  # Para ver tráfico HTTP crudo
-
-# Opcional: para ver el cuerpo exacto (útil para WS con seguridad)
-#logging.getLogger("zeep.wsdl.messages").setLevel(logging.DEBUG)
-#logging.getLogger("zeep.client").setLevel(logging.DEBUG)
 
 now = datetime.now()
 transactionDate = now.strftime("%Y-%m-%dT%H:%M:%S")
@@ -53,67 +46,74 @@ class TeleredClient(ClientCustom):
     
     def get_session(self)->dict:
         try:
-            base_dir = os.path.dirname(os.path.abspath(__file__)) 
-            signing_key_path = os.path.join(base_dir, "banco-private_key.pem")
+            base_dir = os.path.dirname(os.path.abspath(__file__))
             signing_cert_pem_path = os.path.join(base_dir, "banco-private_cert.pem")
             encrypt_cert_file_path = os.path.join(base_dir, "trusted-telered.pem")
             
             # Generar el envelope WSSE    
             soap_wsse = SecureWSSE(
                 username="col-158",
-                password="b1386235124a19dfe867d41683c5f5e3eadb744b",
-                signing_key = signing_key_path,
+                password="b1386235124a19dfe867d41683c5f5e3eadb744b",                
                 signing_cert_pem = signing_cert_pem_path,        
                 encrypt_cert_file= encrypt_cert_file_path
             )
 
             _logger.info(f"******Iniciando conexion a backend****")
-            soap_envelope = self.client.create_message(self.client.service, 'GetSession', canal="SP")
-            
+            #soap_envelope = self.client.create_message(self.client.service, 'GetSession', canal="SP")
+
+            NSMAP = {
+                'soapenv': 'http://schemas.xmlsoap.org/soap/envelope/',               
+                'dto': 'http://dto.eis.pasarela.hubpagos.bytesw.com/'
+            }
+
+            BODY_NSMAP = {
+                'soapenv': 'http://schemas.xmlsoap.org/soap/envelope/',               
+                'dto': 'http://dto.eis.pasarela.hubpagos.bytesw.com/',
+                'wsu': 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd'
+            }
+
+            # ElementMaker con namespaces
+            SOAPENV = ElementMaker(namespace=NSMAP['soapenv'], nsmap=NSMAP)
+            SOAPENV_BODY = ElementMaker(namespace=NSMAP['soapenv'], nsmap=BODY_NSMAP)     
+            DTO = ElementMaker(namespace=NSMAP['dto'])
+
+            # Construir el envelope
+            header = SOAPENV.Header()
+            body = SOAPENV_BODY.Body(
+                DTO.GetSessionRequest(
+                    etree.Element("canal")
+                )
+            )
+
+            body[0][0].text = "SP"  # canal.text = "SP"
+
+            soap_envelope = SOAPENV.Envelope(header, body)
+
+            _logger.info(f"Envelope creado: {etree.tostring(soap_envelope, pretty_print=True, xml_declaration=True, encoding="UTF-8").decode()}")
+
+            # Le aplica al envelope WSSE (usernametoken, firma, cifrado)
             envelope, headers = soap_wsse.apply(soap_envelope, {})
 
             headers = {
                     "Content-Type": "text/xml; charset=utf-8",
                     "SOAPAction": "http://pasarela.hubpagos.bytesw.com/GetSession"
                 }
-            envelope_str = ET.tostring(envelope).decode()
+            envelope_str = etree.tostring(envelope, xml_declaration=True, encoding="UTF-8").decode()
             _logger.info(f"Envelope: {envelope_str}")
 
             #Comentado temporalmente, mientras se resuelve el tema del timeout
             response = self.client.transport.post(address=self.url, message=envelope_str, headers=headers)
 
-
-            """try:
-                response = self.client.transport.post(address=self.url, message=envelope_str, headers=headers)
-                
-            except Exception as e:
-                if self.client.transport.history:
-                    last_response = self.client.transport.history[-1]
-                    print("Status Code:", last_response.status_code)
-                    print("Respuesta HTTP:", last_response.content.decode())  # Body de la respuesta
-                    print("Headers:", last_response.headers)  # Cabeceras de la respuesta
-                raise e  # Relanza la excepción para ver el error original"""
-
             print("HTTP Status:", response.status_code)
             print("Header Response:", response.headers)
             print("Response:", response.content.decode())            
-            #print(self.client.transport.last_sent) 
-            #print(self.client.transport.last_received)  
-
+            
             
             result = Response(
                 status_code=response.status_code,
                 headers={},
                 body=response.content.decode()
             )
-
-            """result = Response(
-                status_code=200,
-                headers={},
-                body=json.dumps({
-                    "sesionId": "xwGeulIpuBoWnTs4Gaex"
-                })
-            )"""
             
             return result
         
