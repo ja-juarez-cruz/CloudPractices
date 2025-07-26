@@ -8,9 +8,9 @@ from zeep.transports import Transport
 from requests import Session
 from lxml.builder import ElementMaker
 from lxml import etree
-import re
 
 from wsse_client import SecureWSSE
+from wsse_output_policy import SOAPResponseProcessor
 from aws_lambda_powertools.event_handler.api_gateway import Response
 
 _logger = logging.getLogger()
@@ -99,20 +99,38 @@ class TeleredClient(ClientCustom):
                     "SOAPAction": "http://pasarela.hubpagos.bytesw.com/GetSession"
                 }
             envelope_str = etree.tostring(envelope, xml_declaration=True, encoding="UTF-8").decode()
-            _logger.info(f"Envelope: {envelope_str}")
+            #_logger.info(f"Envelope: {envelope_str}")
 
             #Comentado temporalmente, mientras se resuelve el tema del timeout
             response = self.client.transport.post(address=self.url, message=envelope_str, headers=headers)
 
             print("HTTP Status:", response.status_code)
             print("Header Response:", response.headers)
-            print("Response:", response.content.decode())            
+            #print("Response:", response.content.decode())
+
+            if response.status_code == 200:
+                processor = SOAPResponseProcessor()
+                decrypted_content = processor.process_response(response.content.decode())
+
+                _logger.info(f"Contenido desencriptado: {decrypted_content}")
+
+                # Parsear XML
+                json_result = {}
+                root = etree.fromstring(decrypted_content)
+                sesion_id_elem = root.find('.//sesionId')
+                json_result['sesionId'] = sesion_id_elem.text
+                _logger.info(f"JSON Result: {json_result}")
             
+            else:
+                json_result = {
+                    "error": "Error al procesar la solicitud",                    
+                    "message": response.content.decode()
+                }
             
             result = Response(
                 status_code=response.status_code,
                 headers={},
-                body=response.content.decode()
+                body=json_result
             )
             
             return result
