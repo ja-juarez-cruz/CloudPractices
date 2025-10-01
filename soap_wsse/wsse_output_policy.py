@@ -17,8 +17,8 @@ logging.basicConfig(level=logging.DEBUG)
 class SOAPResponseProcessor:
     def __init__(self):
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.private_cert_pem = os.path.join(base_dir, "banco-private_cert.pem")
-        self.public_cert_file = os.path.join(base_dir, "trusted-telered.pem")        
+        self.private_cert_pem = os.path.join(base_dir, "BancoA_private_cert.pem")
+        self.public_cert_file = os.path.join(base_dir, "pasarela_public_cert.pem")        
 
     def process_response(self, response_xml):
         """

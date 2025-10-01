@@ -47,14 +47,16 @@ class TeleredClient(ClientCustom):
     def get_session(self)->dict:
         try:
             base_dir = os.path.dirname(os.path.abspath(__file__))
-            signing_cert_pem_path = os.path.join(base_dir, "banco-private_cert.pem")
-            encrypt_cert_file_path = os.path.join(base_dir, "trusted-telered.pem")
+            BancoA_public_cert_path = os.path.join(base_dir, "BancoA_public_cert.pem")
+            BancoA_private_cert_path = os.path.join(base_dir, "BancoA_private_cert.pem")
+            encrypt_cert_file_path = os.path.join(base_dir, "pasarela_public_cert.pem")
             
             # Generar el envelope WSSE    
             soap_wsse = SecureWSSE(
-                username="col-158",
-                password="b1386235124a19dfe867d41683c5f5e3eadb744b",                
-                signing_cert_pem = signing_cert_pem_path,        
+                username="col-158", #usuario
+                password="b1386235124a19dfe867d41683c5f5e3eadb744b",    #welcome123,
+                public_cert_pem = BancoA_public_cert_path,
+                private_cert_pem =  BancoA_private_cert_path,                        
                 encrypt_cert_file= encrypt_cert_file_path
             )
 

@@ -35,10 +35,11 @@ def random_serial(bits=128):
 
 
 class SecureWSSE:
-    def __init__(self, username, password, signing_cert_pem, encrypt_cert_file):
+    def __init__(self, username, password, public_cert_pem, private_cert_pem, encrypt_cert_file):
         self.username = username
         self.password = password
-        self.signing_cert_pem = signing_cert_pem
+        self.private_cert_pem = private_cert_pem
+        self.public_cert_pem = public_cert_pem,
         self.encrypt_cert_file = encrypt_cert_file
 
     def apply(self, envelope, headers):
@@ -267,7 +268,10 @@ class SecureWSSE:
         )        
         
 
-        with open(self.signing_cert_pem, "rb") as f:
+        # Verifica qué hay en la variable
+        print(f"Tipo: {type(self.public_cert_pem)}")
+        print(f"Contenido: {self.public_cert_pem}")
+        with open(self.public_cert_pem[0], "rb") as f:
             cert_data = f.read()
         cert = x509.load_pem_x509_certificate(cert_data, default_backend())
         issuer = cert.issuer.rfc4514_string()
@@ -285,7 +289,7 @@ class SecureWSSE:
         security.insert(0, signature_node)        
         
         ctx = xmlsec.SignatureContext()
-        key = xmlsec.Key.from_file(self.signing_cert_pem, xmlsec.KeyFormat.PEM)        
+        key = xmlsec.Key.from_file(self.private_cert_pem, xmlsec.KeyFormat.PEM)        
         #key.load_cert_from_file(self.signing_cert_pem, xmlsec.KeyFormat.PEM)
         ctx.key = key
         
