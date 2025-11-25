@@ -1,0 +1,483 @@
+{
+  "name": "SIGED - Extractor de Escuelas (Parametrizable)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "siged-escuelas",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook con Parámetros",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "siged-escuelas-webhook",
+      "notes": "Envía POST con body:\n{\n  \"estados\": [\"09\", \"15\"],\n  \"limite_municipios\": 0,\n  \"guardar_parcial\": true\n}"
+    },
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Trigger Manual",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 500],
+      "notes": "Para pruebas rápidas con valores por defecto"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Catálogo completo de estados\nconst catalogoEstados = {\n  \"01\": \"Aguascalientes\",\n  \"02\": \"Baja California\",\n  \"03\": \"Baja California Sur\",\n  \"04\": \"Campeche\",\n  \"05\": \"Coahuila\",\n  \"06\": \"Colima\",\n  \"07\": \"Chiapas\",\n  \"08\": \"Chihuahua\",\n  \"09\": \"Ciudad de México\",\n  \"10\": \"Durango\",\n  \"11\": \"Guanajuato\",\n  \"12\": \"Guerrero\",\n  \"13\": \"Hidalgo\",\n  \"14\": \"Jalisco\",\n  \"15\": \"México\",\n  \"16\": \"Michoacán\",\n  \"17\": \"Morelos\",\n  \"18\": \"Nayarit\",\n  \"19\": \"Nuevo León\",\n  \"20\": \"Oaxaca\",\n  \"21\": \"Puebla\",\n  \"22\": \"Querétaro\",\n  \"23\": \"Quintana Roo\",\n  \"24\": \"San Luis Potosí\",\n  \"25\": \"Sinaloa\",\n  \"26\": \"Sonora\",\n  \"27\": \"Tabasco\",\n  \"28\": \"Tamaulipas\",\n  \"29\": \"Tlaxcala\",\n  \"30\": \"Veracruz\",\n  \"31\": \"Yucatán\",\n  \"32\": \"Zacatecas\"\n};\n\n// Obtener parámetros de entrada\nlet estadosAProcesar = [];\nlet limiteMunicipios = 0; // 0 = todos\nlet guardarParcial = false;\n\n// Detectar fuente del trigger\nconst inputData = $input.first().json;\n\nif (inputData.body) {\n  // Viene del webhook\n  const params = inputData.body;\n  estadosAProcesar = params.estados || [\"09\"]; // Default CDMX\n  limiteMunicipios = params.limite_municipios || 0;\n  guardarParcial = params.guardar_parcial || false;\n} else if (inputData.estados) {\n  // Viene con parámetros directos\n  estadosAProcesar = inputData.estados;\n  limiteMunicipios = inputData.limite_municipios || 0;\n  guardarParcial = inputData.guardar_parcial || false;\n} else {\n  // Trigger manual - valores por defecto para prueba\n  estadosAProcesar = [\"09\"]; // Solo CDMX por defecto\n  limiteMunicipios = 2; // Solo 2 municipios para prueba rápida\n  guardarParcial = true;\n}\n\n// Validar y formatear estados\nconst estadosValidos = estadosAProcesar\n  .filter(id => catalogoEstados[id])\n  .map(id => ({\n    id: id,\n    nombre: catalogoEstados[id]\n  }));\n\nif (estadosValidos.length === 0) {\n  throw new Error('No se especificaron estados válidos. Use códigos como \"09\" para CDMX, \"15\" para Estado de México, etc.');\n}\n\n// Retornar configuración y estados a procesar\nreturn [{\n  json: {\n    configuracion: {\n      total_estados: estadosValidos.length,\n      estados_nombres: estadosValidos.map(e => e.nombre).join(', '),\n      limite_municipios: limiteMunicipios,\n      guardar_parcial: guardarParcial,\n      timestamp_inicio: new Date().toISOString()\n    },\n    estados: estadosValidos,\n    limite_municipios: limiteMunicipios\n  }\n}];"
+      },
+      "id": "process-parameters",
+      "name": "Procesar Parámetros",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 400]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "estados",
+        "include": "selectedOtherFields",
+        "fieldsToInclude": "configuracion, limite_municipios",
+        "options": {}
+      },
+      "id": "split-estados",
+      "name": "Separar Estados",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3,
+      "position": [650, 400]
+    },
+    {
+      "parameters": {
+        "url": "=https://www.siged.sep.gob.mx/SIGED/API/escuelas/entidades/{{$json.estados.id}}/municipios",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "noAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          }
+        }
+      },
+      "id": "get-municipios",
+      "name": "Obtener Municipios del Estado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 400],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const estado = $input.first().json.estados;\nconst limiteMunicipios = $input.first().json.limite_municipios;\nconst response = $json;\n\n// Verificar si hay error\nif (response.error || !response.data) {\n  console.log(`Error obteniendo municipios para ${estado.nombre}`);\n  return [{\n    json: {\n      error: true,\n      estado: estado.nombre,\n      mensaje: 'No se pudieron obtener municipios'\n    }\n  }];\n}\n\nconst municipios = response.data || [];\n\n// Aplicar límite si existe\nconst municipiosAProcesar = limiteMunicipios > 0 \n  ? municipios.slice(0, limiteMunicipios)\n  : municipios;\n\nconsole.log(`Procesando ${municipiosAProcesar.length} de ${municipios.length} municipios en ${estado.nombre}`);\n\nreturn municipiosAProcesar.map(municipio => ({\n  json: {\n    estadoId: estado.id,\n    estadoNombre: estado.nombre,\n    municipioId: municipio.id,\n    municipioNombre: municipio.nombre,\n    totalMunicipios: municipios.length,\n    procesando: municipiosAProcesar.length\n  }\n}));"
+      },
+      "id": "format-municipios",
+      "name": "Formatear Municipios",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "batch-municipios",
+      "name": "Procesar Municipios por Lotes",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1250, 400]
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "seconds"
+      },
+      "id": "wait",
+      "name": "Esperar (Anti Rate-Limit)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1450, 300],
+      "notes": "Ajusta el tiempo según necesidad"
+    },
+    {
+      "parameters": {
+        "url": "=https://www.siged.sep.gob.mx/SIGED/API/escuelas",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "noAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "entidadId",
+              "value": "={{$json.estadoId}}"
+            },
+            {
+              "name": "municipioId",
+              "value": "={{$json.municipioId}}"
+            },
+            {
+              "name": "page",
+              "value": "1"
+            },
+            {
+              "name": "size",
+              "value": "500"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "get-escuelas",
+      "name": "Obtener Escuelas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1650, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const info = $input.first().json;\nconst response = $json;\n\n// Verificar si hay error\nif (response.error || !response.data) {\n  console.log(`Error obteniendo escuelas para ${info.municipioNombre}, ${info.estadoNombre}`);\n  return [{\n    json: {\n      error: true,\n      estado: info.estadoNombre,\n      municipio: info.municipioNombre,\n      mensaje: 'No se pudieron obtener escuelas'\n    }\n  }];\n}\n\nconst escuelas = response.data || [];\nconst totalPaginas = response.totalPages || 1;\nconst paginaActual = response.currentPage || 1;\n\nconsole.log(`Encontradas ${escuelas.length} escuelas en ${info.municipioNombre}, ${info.estadoNombre}`);\nconsole.log(`Página ${paginaActual} de ${totalPaginas}`);\n\n// Procesar cada escuela\nconst escuelasFormateadas = escuelas.map(escuela => ({\n  // Identificación\n  CCT: escuela.cct || '',\n  NombreEscuela: escuela.nombre || '',\n  \n  // Ubicación\n  Estado: info.estadoNombre || '',\n  Municipio: info.municipioNombre || '',\n  Localidad: escuela.localidad || '',\n  Direccion: escuela.domicilio || '',\n  CodigoPostal: escuela.codigoPostal || '',\n  Latitud: escuela.latitud || '',\n  Longitud: escuela.longitud || '',\n  \n  // Características\n  Nivel: escuela.nivel || '',\n  Subnivel: escuela.subnivel || '',\n  Servicio: escuela.servicio || '',\n  Turno: escuela.turno || '',\n  Sostenimiento: escuela.sostenimiento || '',\n  \n  // Contacto\n  Telefono: escuela.telefono || '',\n  Email: escuela.correoElectronico || '',\n  PaginaWeb: escuela.paginaWeb || '',\n  \n  // Estadísticas\n  TotalAlumnos: escuela.totalAlumnos || 0,\n  TotalDocentes: escuela.totalDocentes || 0,\n  TotalGrupos: escuela.totalGrupos || 0,\n  TotalAulas: escuela.totalAulas || 0,\n  \n  // Metadata\n  FechaActualizacion: escuela.fechaActualizacion || '',\n  Estatus: escuela.estatus || 'ACTIVO',\n  FechaExtraccion: new Date().toISOString()\n}));\n\n// Si hay más páginas, aquí podrías implementar paginación\n// Por ahora solo tomamos la primera página (500 registros)\n\nreturn escuelasFormateadas.map(escuela => ({\n  json: escuela\n}));"
+      },
+      "id": "format-escuelas",
+      "name": "Formatear Datos de Escuelas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "id": "merge-loop",
+      "name": "Continuar Loop",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2050, 400]
+    },
+    {
+      "parameters": {
+        "operation": "aggregateItems",
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "todas_escuelas"
+      },
+      "id": "aggregate-all",
+      "name": "Agregar Todas las Escuelas",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3,
+      "position": [2250, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst escuelas = data.todas_escuelas || [];\n\n// Crear resumen\nconst resumen = {\n  total_escuelas: escuelas.length,\n  estados_procesados: [...new Set(escuelas.map(e => e.Estado))],\n  municipios_procesados: [...new Set(escuelas.map(e => `${e.Estado}-${e.Municipio}`))].length,\n  escuelas_por_nivel: {},\n  escuelas_por_sostenimiento: {},\n  timestamp_fin: new Date().toISOString()\n};\n\n// Contar por nivel\nescuelas.forEach(escuela => {\n  resumen.escuelas_por_nivel[escuela.Nivel] = (resumen.escuelas_por_nivel[escuela.Nivel] || 0) + 1;\n  resumen.escuelas_por_sostenimiento[escuela.Sostenimiento] = (resumen.escuelas_por_sostenimiento[escuela.Sostenimiento] || 0) + 1;\n});\n\nconsole.log('=== RESUMEN DE EXTRACCIÓN ===\"');\nconsole.log(`Total de escuelas: ${resumen.total_escuelas}`);\nconsole.log(`Estados procesados: ${resumen.estados_procesados.join(', ')}`);\nconsole.log(`Municipios procesados: ${resumen.municipios_procesados}`);\n\n// Retornar las escuelas para el Excel\nreturn escuelas.map(escuela => ({json: escuela}));"
+      },
+      "id": "prepare-final-data",
+      "name": "Preparar Datos Finales",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2450, 500]
+    },
+    {
+      "parameters": {
+        "operation": "toFile",
+        "fileFormat": "xlsx",
+        "options": {
+          "fileName": "=escuelas_{{$json.Estado}}_{{$now.format('yyyyMMdd_HHmm')}}.xlsx",
+          "sheetName": "Escuelas",
+          "headerRow": true
+        }
+      },
+      "id": "convert-to-excel",
+      "name": "Convertir a Excel",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 2,
+      "position": [2650, 500]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "name": "=escuelas_siged_{{$now.format('yyyyMMdd_HHmm')}}.xlsx",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root"
+        },
+        "options": {}
+      },
+      "id": "save-to-google-drive",
+      "name": "Guardar en Google Drive (Opcional)",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [2850, 400],
+      "disabled": true,
+      "notes": "Activa este nodo si tienes Google Drive configurado"
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/tmp/escuelas_siged_{{$now.format('yyyyMMdd_HHmm')}}.xlsx",
+        "options": {}
+      },
+      "id": "write-local-file",
+      "name": "Guardar Archivo Local",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [2850, 600]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "mensaje",
+              "value": "=Extracción completada. Total de escuelas: {{$json.length}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "response",
+      "name": "Respuesta Final",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [3050, 500]
+    }
+  ],
+  "connections": {
+    "webhook-trigger": {
+      "main": [
+        [
+          {
+            "node": "process-parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "manual-trigger": {
+      "main": [
+        [
+          {
+            "node": "process-parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "process-parameters": {
+      "main": [
+        [
+          {
+            "node": "split-estados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "split-estados": {
+      "main": [
+        [
+          {
+            "node": "get-municipios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get-municipios": {
+      "main": [
+        [
+          {
+            "node": "format-municipios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format-municipios": {
+      "main": [
+        [
+          {
+            "node": "batch-municipios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "batch-municipios": {
+      "main": [
+        [
+          {
+            "node": "wait",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "aggregate-all",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "wait": {
+      "main": [
+        [
+          {
+            "node": "get-escuelas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get-escuelas": {
+      "main": [
+        [
+          {
+            "node": "format-escuelas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format-escuelas": {
+      "main": [
+        [
+          {
+            "node": "merge-loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "merge-loop": {
+      "main": [
+        [
+          {
+            "node": "batch-municipios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "aggregate-all": {
+      "main": [
+        [
+          {
+            "node": "prepare-final-data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepare-final-data": {
+      "main": [
+        [
+          {
+            "node": "convert-to-excel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "convert-to-excel": {
+      "main": [
+        [
+          {
+            "node": "write-local-file",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "save-to-google-drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "write-local-file": {
+      "main": [
+        [
+          {
+            "node": "response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "save-to-google-drive": {
+      "main": [
+        [
+          {
+            "node": "response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "meta": {
+    "templateId": "siged-parametrizable",
+    "instanceId": "1"
+  }
+}
