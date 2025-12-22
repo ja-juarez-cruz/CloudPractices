@@ -27,3 +27,24 @@ __pycache__/
 *.key
 *.crt
 *.jks
+
+# Dependencias
+node_modules/
+
+# Builds
+build/
+dist/
+out/
+
+# Archivos de entorno
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
