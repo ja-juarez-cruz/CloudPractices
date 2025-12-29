@@ -270,30 +270,57 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                     // Calcular fecha fin de la tanda (basada en el último participante)
                     const calcularFechaFin = () => {
                       if (!tanda.fechaInicio || !tanda.totalRondas) return null;
-                      
+
                       const fechaInicio = new Date(tanda.fechaInicio);
-                      let diasPorRonda = 7;
-                      if (tanda.frecuencia === 'quincenal') diasPorRonda = 15;
-                      else if (tanda.frecuencia === 'mensual') diasPorRonda = 30;
-                      
-                      // Calcular fecha de pago del último participante
                       const ultimaRonda = tanda.totalRondas;
-                      const diasHastaUltimaRonda = (ultimaRonda - 1) * diasPorRonda;
-                      const fechaInicioUltimaRonda = new Date(fechaInicio);
-                      fechaInicioUltimaRonda.setDate(fechaInicioUltimaRonda.getDate() + diasHastaUltimaRonda);
-                      
-                      // Fecha de siguiente ronda después de la última
-                      const fechaSiguienteRonda = new Date(fechaInicioUltimaRonda);
-                      fechaSiguienteRonda.setDate(fechaSiguienteRonda.getDate() + diasPorRonda);
-                      
-                      // Fecha de pago del último participante: 1 día antes de la siguiente ronda
-                      const fechaFinTanda = new Date(fechaSiguienteRonda);
-                      fechaFinTanda.setDate(fechaFinTanda.getDate() - 1);
-                      
+                      let fechaFinTanda = null;
+
+                      // ================= SEMANAL =================
+                      if (tanda.frecuencia === 'semanal') {
+                        const diasHastaUltimaRonda = (ultimaRonda - 1) * 7;
+
+                        const fechaInicioUltimaRonda = new Date(fechaInicio);
+                        fechaInicioUltimaRonda.setDate(
+                          fechaInicioUltimaRonda.getDate() + diasHastaUltimaRonda + 1
+                        );
+
+                        fechaFinTanda = new Date(fechaInicioUltimaRonda);
+                        
+                      }
+
+                      // ================= QUINCENAL =================
+                      else if (tanda.frecuencia === 'quincenal') {
+                        let temp = new Date(fechaInicio);
+
+                        for (let i = 1; i < ultimaRonda+1; i++) {
+                          const dia = temp.getDate();
+
+                          if (dia < 15) {
+                            temp.setDate(dia === 1 || dia === 15 ? 15 : 16);
+                          } else {
+                            temp.setMonth(temp.getMonth() + 1);
+                            temp.setDate(1);
+                          }
+                        }
+
+                        temp.setDate(temp.getDate());
+                        fechaFinTanda = new Date(temp);
+                      }
+
+                      // ================= MENSUAL =================
+                      else if (tanda.frecuencia === 'mensual') {
+                        const temp = new Date(fechaInicio);
+                        temp.setMonth(temp.getMonth() + ultimaRonda-1);
+                        temp.setDate(temp.getDate()+1);
+                        fechaFinTanda = temp;
+                      }
+
                       return fechaFinTanda;
                     };
+
                     
                     const fechaInicio = tanda.fechaInicio ? new Date(tanda.fechaInicio) : null;
+                    fechaInicio.setDate(fechaInicio.getDate()+1)
                     const fechaFin = calcularFechaFin();
                     
                     // Contar participantes reales

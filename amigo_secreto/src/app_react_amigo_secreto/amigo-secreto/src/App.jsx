@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Gift, Users, Sparkles, Check, Clock, Loader2, Moon, Sun, Calendar, Share2, Trash2 } from 'lucide-react';
+import { Gift, Users, Sparkles, Check, Clock, Loader2, Moon, Sun, Calendar, Share2, Trash2, ArrowLeft, Eye } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { QRCodeSVG } from 'qrcode.react';
@@ -238,7 +238,8 @@ const mockAPI = {
       const summary = session.participants.map(p => ({
         nickname: p,
         avatar: session.avatars[p] || '🎁',
-        wishlist: session.wishlists[p] || []
+        wishlist: session.wishlists[p] || [],
+        hasRevealed: !!session.assignments[p] // ✅ NUEVO: Indicar si ya reveló
       }));
 
       return { success: true, summary, config: session.config };
@@ -320,7 +321,7 @@ function App() {
   // 👇 TEMPORAL: Para debugging
   console.log('🎬 Current view:', view);
   console.log('🆔 Current sessionId:', sessionId);
-  console.log('📊 Current status:', status);
+  //console.log('📊 Current status:', status);
 
   // Configuración del sorteo (#5)
   const [config, setConfig] = useState({
@@ -356,9 +357,36 @@ function App() {
     i18n.changeLanguage(savedLang);
   }, []);
 
+  // Hook para cargar summary y redirigir
+  useEffect(() => {
+    if (view === 'join' && sessionId) {
+      const claimed = localStorage.getItem(`session_${sessionId}_claimed`);
+      
+      if (claimed) {
+        const loadAndRedirect = async () => {
+          try {
+            console.log('🔄 Cargando summary...');
+            const summaryResult = await mockAPI.getSummary(sessionId);
+            
+            if (summaryResult.success) {
+              setSummary(summaryResult.summary);
+              setTimeout(() => {
+                setView('summary');
+              }, 800);
+            }
+          } catch (error) {
+            console.error('❌ Error:', error);
+          }
+        };
+        
+        loadAndRedirect();
+      }
+    }
+  }, [view, sessionId]);
+  
   const loadStatus = async (id) => {
     const result = await mockAPI.getStatus(id);
-    console.log('✅ Status loaded successfully:', result);
+    //console.log('✅ Status loaded successfully:', result);
     if (result.success) {
       setStatus(result);
       setConfig(result.config || {});
@@ -425,7 +453,18 @@ function App() {
     if (result.success) {
       localStorage.setItem(`session_${sessionId}_claimed`, selectedNickname);
       localStorage.setItem(`session_${sessionId}_avatar`, selectedAvatar);
-      setView('reveal');
+      
+      // ✅ NUEVO: Verificar si ya reveló anteriormente
+      const statusCheck = await mockAPI.getStatus(sessionId);
+      if (statusCheck.success && statusCheck.assignments && statusCheck.assignments[selectedNickname]) {
+        // Ya tiene un amigo asignado, ir directo a ver el amigo
+        setAssignedFriend(statusCheck.assignments[selectedNickname]);
+        setWishlist(statusCheck.wishlists[selectedNickname] || []);
+        setView('assigned'); // ← Ir a la nueva vista
+      } else {
+        // Primera vez, ir a revelar
+        setView('reveal');
+      }
       setError('');
     } else {
       setError(result.error);
@@ -439,7 +478,7 @@ function App() {
 
     if (result.success) {
       setAssignedFriend(result.assignedTo);
-      setView('wishlist');
+      setView('assigned');
 
       // Lanzar confetti (#13)
       confetti({
@@ -453,6 +492,31 @@ function App() {
     setLoading(false);
   };
 
+  // ✅ NUEVA FUNCIÓN: Terminar sin agregar wishlist
+  const handleFinishWithoutWishlist = async () => {
+    setLoading(true);
+    
+    // Guardar wishlist vacío si no hay items
+    if (wishlist.length === 0) {
+      await mockAPI.updateWishlist(sessionId, selectedNickname, []);
+    }
+    
+    confetti({
+      particleCount: 100,
+      spread: 60,
+      origin: { y: 0.6 }
+    });
+
+    // Ir al resumen
+    await loadStatus(sessionId);
+    const summaryResult = await mockAPI.getSummary(sessionId);
+    if (summaryResult.success) {
+      setSummary(summaryResult.summary);
+      setView('summary');
+    }
+    setLoading(false);
+  };
+  
   // Agregar item a wishlist (#9)
   const handleAddWishlistItem = () => {
     if (newWishlistItem.name.trim()) {
@@ -468,19 +532,21 @@ function App() {
   const handleSaveWishlist = async () => {
     setLoading(true);
     await mockAPI.updateWishlist(sessionId, selectedNickname, wishlist);
-    setView('completed');
-    setLoading(false);
-
-    // Más confetti
+    
     confetti({
       particleCount: 150,
       spread: 90,
       origin: { y: 0.5 }
     });
 
-    setTimeout(() => {
-      loadStatus(sessionId);
-    }, 1000);
+    // ✅ NUEVO: Ir al resumen en lugar de completed
+    await loadStatus(sessionId);
+    const summaryResult = await mockAPI.getSummary(sessionId);
+    if (summaryResult.success) {
+      setSummary(summaryResult.summary);
+      setView('summary'); // ← Ir a vista de resumen
+    }
+    setLoading(false);
   };
 
   // Compartir por WhatsApp (#25)
@@ -1049,11 +1115,8 @@ function App() {
     const savedAvatar = localStorage.getItem(`session_${sessionId}_avatar`);
     
     console.log('👀 JOIN VIEW - claimed:', claimed);
-    console.log('👀 JOIN VIEW - status:', status);
+    //console.log('👀 JOIN VIEW - status:', status);
     console.log('👀 JOIN VIEW - sessionId:', sessionId);
-    
-    // Estado para modal de avatares
-    //const [showAvatarModal, setShowAvatarModal] = useState(false);
     
     // Mostrar loading mientras carga el status
     if (!status) {
@@ -1074,58 +1137,57 @@ function App() {
       );
     }
     
-    // Ya reclamado
+    // ✅ Ya reclamado - Solo mostrar loading (el useEffect se encarga de redirigir)
     if (claimed) {
       return (
         <div className={`min-h-screen ${darkMode ? 'dark bg-gray-900' : 'bg-gradient-to-br from-red-50 to-green-50'} flex items-center justify-center p-4`}>
           {showSnow && <Snowfall snowflakeCount={20} />}
           
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
-            <div className="text-6xl mb-4">{savedAvatar || '🎁'}</div>
-            <Check className="w-20 h-20 mx-auto text-green-500 mb-4" />
-            <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-4">
-              {t('alreadyCompleted')}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 max-w-md w-full text-center"
+          >
+            <motion.div
+              animate={{ 
+                scale: [1, 1.1, 1],
+                rotate: [0, 5, -5, 0]
+              }}
+              transition={{ 
+                duration: 1.5,
+                repeat: Infinity,
+                repeatDelay: 0.5
+              }}
+              className="text-6xl mb-4"
+            >
+              {savedAvatar || '🎁'}
+            </motion.div>
+            
+            <Loader2 className="w-16 h-16 mx-auto text-red-500 animate-spin mb-4" />
+            
+            <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">
+              ¡Bienvenido de nuevo!
             </h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              {t('as')} <span className="font-bold text-red-500">{claimed}</span>
+            
+            <p className="text-lg text-gray-700 dark:text-gray-300 mb-4">
+              Hola <span className="font-bold text-red-500">{claimed}</span>
             </p>
             
-            {status && (
-              <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-                <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  {t('drawStatus')}
-                </h3>
-                <div className="space-y-1 text-sm">
-                  <p className="text-green-600">✓ {t('completed')}: {status.revealed.length}</p>
-                  <p className="text-orange-600">⏳ {t('pending')}: {status.pending.length}</p>
-                </div>
-                
-                {/* Mostrar configuración */}
-                {status.config && Object.keys(status.config).length > 0 && (
-                  <div className="mt-4 text-left text-sm space-y-1 border-t border-gray-200 dark:border-gray-600 pt-3">
-                    {status.config.budget && (
-                      <p className="text-gray-600 dark:text-gray-400">
-                        💰 {t('budget')}: {status.config.budget}
-                      </p>
-                    )}
-                    {status.config.exchangeDate && (
-                      <p className="text-gray-600 dark:text-gray-400">
-                        📅 {t('exchangeDate')}: {new Date(status.config.exchangeDate).toLocaleDateString()}
-                      </p>
-                    )}
-                    {status.config.location && (
-                      <p className="text-gray-600 dark:text-gray-400">
-                        📍 {status.config.location}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              Cargando el resumen del sorteo...
+            </p>
+            
+            <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border-2 border-blue-200 dark:border-blue-800">
+              <p className="text-sm text-blue-800 dark:text-blue-300 font-medium">
+                💡 Podrás volver a ver tu amigo secreto en el resumen
+              </p>
+            </div>
+          </motion.div>
         </div>
       );
     }
+
 
     // Seleccionar nickname
     return (
@@ -2041,6 +2103,422 @@ function App() {
               ¡Que disfruten su intercambio de regalos! 🎄✨
             </p>
           </motion.div>
+        </div>
+      </div>
+    );
+  }
+  
+  // ✅ NUEVA VISTA: Mostrar amigo asignado con opciones
+  if (view === 'assigned') {
+    return (
+      <div className={`min-h-screen ${darkMode ? 'dark bg-gray-900' : 'bg-gradient-to-br from-red-50 to-green-50'} flex items-center justify-center p-4`}>
+        {showSnow && <Snowfall snowflakeCount={30} />}
+        
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4 }}
+          className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl p-8 max-w-lg w-full"
+        >
+          {/* Card grande con el nombre del amigo secreto */}
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.2, type: "spring" }}
+            className="bg-gradient-to-br from-red-500 via-pink-500 to-purple-500 rounded-2xl p-12 text-center mb-8 shadow-xl"
+          >
+            <motion.div
+              initial={{ rotate: -10 }}
+              animate={{ rotate: 0 }}
+              transition={{ delay: 0.4 }}
+              className="text-8xl mb-6"
+            >
+              🎁
+            </motion.div>
+            
+            <p className="text-white/90 text-lg mb-3 font-medium">
+              Tu amigo secreto es:
+            </p>
+            
+            <motion.h2
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="text-5xl font-extrabold text-white drop-shadow-lg break-words"
+            >
+              {assignedFriend}
+            </motion.h2>
+          </motion.div>
+
+          {/* Advertencia */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7 }}
+            className="bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-200 dark:border-yellow-800 rounded-xl p-4 mb-6"
+          >
+            <p className="text-sm text-yellow-800 dark:text-yellow-300 font-semibold text-center flex items-center justify-center gap-2">
+              <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              ¡No compartas esta información con nadie!
+            </p>
+          </motion.div>
+
+          {/* Botones de acción */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.9 }}
+            className="grid grid-cols-1 sm:grid-cols-2 gap-4"
+          >
+            <button
+              onClick={handleFinishWithoutWishlist}
+              disabled={loading}
+              className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white font-bold py-4 rounded-xl transition-all shadow-md hover:shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <>
+                  <Check className="w-5 h-5" />
+                  Terminar
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={() => setView('wishlist')}
+              className="bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-bold py-4 rounded-xl transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+            >
+              <Sparkles className="w-5 h-5" />
+              Agregar Wishlist
+            </button>
+          </motion.div>
+
+          {/* Info adicional */}
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.1 }}
+            className="text-center text-xs text-gray-500 dark:text-gray-400 mt-6"
+          >
+            💡 Agregar una wishlist ayudará a tu amigo secreto a elegir el regalo perfecto para ti
+          </motion.p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // ✅ NUEVA VISTA: Resumen con participantes y wishlists
+  if (view === 'summary') {
+    
+    // Obtener información del usuario actual
+    const myNickname = localStorage.getItem(`session_${sessionId}_claimed`);
+    const myAvatar = localStorage.getItem(`session_${sessionId}_avatar`);
+    
+    // Buscar mi información
+    const myInfo = summary.find(p => p.nickname === myNickname);
+    const myAssignment = status?.assignments?.[myNickname];
+
+    console.log('🔍 DEBUG:');
+    console.log('  myNickname:', myNickname);
+    console.log('  myAssignment:', myAssignment);
+    //console.log('  status?.assignments:', status?.assignments);
+    return (
+      <div className={`min-h-screen ${darkMode ? 'dark bg-gray-900' : 'bg-gradient-to-br from-red-50 to-green-50'} p-4`}>
+        {showSnow && <Snowfall snowflakeCount={30} />}
+        
+        <div className="max-w-4xl mx-auto">
+          {/* Header */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                <Users className="w-8 h-8 text-red-500" />
+                Resumen del Sorteo
+              </h2>
+              
+              <button
+                onClick={() => setView('join')}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-all"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="hidden sm:inline">Volver</span>
+              </button>
+            </div>
+            
+            <p className="text-gray-600 dark:text-gray-400">
+              Sesión #{sessionId}
+            </p>
+          </div>
+
+          {/* ✅ NUEVO: Card Personal - Solo visible para quien ha revelado */}
+          {myNickname && myAssignment && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="mb-6"
+            >
+              <div className="bg-gradient-to-r from-red-500 via-pink-500 to-purple-500 rounded-2xl shadow-2xl p-6 text-white overflow-hidden relative">
+                {/* Patrón decorativo de fondo */}
+                <div className="absolute inset-0 opacity-10">
+                  <div className="absolute top-0 right-0 text-9xl">🎁</div>
+                  <div className="absolute bottom-0 left-0 text-9xl">✨</div>
+                </div>
+                
+                <div className="relative z-10">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    {/* Info del usuario */}
+                    <div className="flex items-center gap-4 text-center sm:text-left">
+                      <div className="bg-white/20 backdrop-blur-sm p-4 rounded-2xl">
+                        <span className="text-5xl">{myAvatar || '🎁'}</span>
+                      </div>
+                      <div>
+                        <p className="text-sm opacity-90 font-medium">
+                          👋 Hola {myNickname}!
+                        </p>
+                        <h3 className="text-xl sm:text-2xl font-bold mb-1">
+                          ¿Olvidaste tu amigo secreto?
+                        </h3>
+                        <p className="text-sm opacity-75">
+                          Puedes volver a verlo cuando quieras
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {/* Botón de acción */}
+                    <button
+                      onClick={() => {
+                        setSelectedNickname(myNickname);
+                        setAssignedFriend(myAssignment);
+                        setWishlist(myInfo?.wishlist || []);
+                        
+                        // Pequeño confetti
+                        confetti({
+                          particleCount: 50,
+                          spread: 60,
+                          origin: { y: 0.6 }
+                        });
+                        
+                        setView('assigned');
+                      }}
+                      className="group bg-white hover:bg-gray-50 text-red-500 font-bold px-6 py-3 rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center gap-2 whitespace-nowrap transform hover:scale-105 active:scale-95"
+                    >
+                      <Eye className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                      <span>Ver Mi Amigo Secreto</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Información del sorteo */}
+          {config && Object.keys(config).length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 mb-6">
+              <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
+                <span className="text-2xl">📋</span>
+                Detalles del Intercambio
+              </h3>
+              
+              <div className="grid md:grid-cols-3 gap-4">
+                {config.budget && (
+                  <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-700/50 p-4 rounded-xl">
+                    <span className="text-3xl">💰</span>
+                    <div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
+                        Presupuesto
+                      </div>
+                      <div className="text-lg font-bold text-gray-800 dark:text-white">
+                        {config.budget}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {config.exchangeDate && (
+                  <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-700/50 p-4 rounded-xl">
+                    <span className="text-3xl">📅</span>
+                    <div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
+                        Fecha
+                      </div>
+                      <div className="text-sm font-bold text-gray-800 dark:text-white">
+                        {new Date(config.exchangeDate).toLocaleDateString('es-ES', {
+                          day: 'numeric',
+                          month: 'long'
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {config.location && (
+                  <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-700/50 p-4 rounded-xl">
+                    <span className="text-3xl">📍</span>
+                    <div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
+                        Lugar
+                      </div>
+                      <div className="text-sm font-bold text-gray-800 dark:text-white truncate">
+                        {config.location}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Lista de participantes con wishlists */}
+          {/* ✅ ACTUALIZADO: Lista de participantes con wishlists */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
+            <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-5 flex items-center gap-2">
+              <span className="text-2xl">👥</span>
+              Participantes ({summary.length})
+            </h3>
+
+            <div className="space-y-4">
+              {summary.map((participant, index) => {
+                // ✅ NUEVO: Ordenar wishlist por prioridad (3 estrellas primero)
+                const sortedWishlist = participant.wishlist 
+                  ? [...participant.wishlist].sort((a, b) => (b.priority || 0) - (a.priority || 0))
+                  : [];
+
+                return (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="bg-gradient-to-r from-gray-50 to-white dark:from-gray-700/50 dark:to-gray-800/50 p-5 rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:shadow-lg transition-all"
+                  >
+                    {/* Header del participante */}
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className="bg-white dark:bg-gray-700 p-3 rounded-full shadow-md">
+                        <span className="text-3xl">{participant.avatar}</span>
+                      </div>
+                      
+                      <div className="flex-1">
+                        <h4 className="text-xl font-bold text-gray-800 dark:text-white">
+                          {participant.nickname}
+                        </h4>
+                        
+                        {/* Badge de estado */}
+                        <div className="flex items-center gap-2 mt-1">
+                          {participant.hasRevealed ? (
+                            <span className="inline-flex items-center gap-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-2 py-1 rounded-full font-semibold">
+                              <Check className="w-3 h-3" />
+                              Completado
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-2 py-1 rounded-full font-semibold">
+                              <Clock className="w-3 h-3" />
+                              Pendiente
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ✅ ACTUALIZADO: Wishlist con items ordenados y links clickeables */}
+                    {sortedWishlist.length > 0 ? (
+                      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="text-lg">🎁</span>
+                          <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            Wishlist ({sortedWishlist.length} {sortedWishlist.length === 1 ? 'item' : 'items'}):
+                          </p>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          {sortedWishlist.map((item, itemIndex) => (
+                            <div
+                              key={itemIndex}
+                              className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 transition-all"
+                            >
+                              <div className="flex items-start gap-3">
+                                {/* Número de item */}
+                                <div className="flex-shrink-0 w-6 h-6 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-xs">
+                                  {itemIndex + 1}
+                                </div>
+                                
+                                <div className="flex-1 min-w-0">
+                                  {/* ✅ NUEVO: Link sobre el nombre (si existe) */}
+                                  {item.link ? (
+                                    <a
+                                      href={item.link}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="group"
+                                    >
+                                      <h5 className="font-semibold text-gray-800 dark:text-white break-words group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1">
+                                        {item.name}
+                                        <svg className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                        </svg>
+                                      </h5>
+                                    </a>
+                                  ) : (
+                                    <h5 className="font-semibold text-gray-800 dark:text-white break-words">
+                                      {item.name}
+                                    </h5>
+                                  )}
+                                  
+                                  {/* ✅ Estrellas de prioridad */}
+                                  <div className="flex items-center gap-1 mt-1">
+                                    {[...Array(item.priority || 1)].map((_, starIdx) => (
+                                      <span key={starIdx} className="text-base text-yellow-500 drop-shadow-sm">
+                                        ⭐
+                                      </span>
+                                    ))}
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
+                                      {item.priority === 3 ? 'Lo deseo mucho' : item.priority === 2 ? 'Me encantaría' : 'Me gustaría'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                        <p className="text-xs text-gray-400 dark:text-gray-500 italic flex items-center gap-1">
+                          <span>📭</span>
+                          Sin wishlist
+                        </p>
+                      </div>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Botones de acción */}
+          <div className="mt-6 space-y-3">
+            {config.exchangeDate && (
+              <button
+                onClick={addToCalendar}
+                className="w-full bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-bold py-4 rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+              >
+                <Calendar className="w-5 h-5" />
+                Agregar al Calendario
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                window.location.hash = '';
+                window.location.reload();
+              }}
+              className="w-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white font-semibold py-3 rounded-xl transition-all"
+            >
+              🏠 Crear otro sorteo
+            </button>
+          </div>
         </div>
       </div>
     );

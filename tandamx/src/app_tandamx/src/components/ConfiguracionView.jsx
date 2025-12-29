@@ -349,7 +349,7 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
                     }
 
                     if (frecuencia === "mensual") {
-                      fecha.setMonth(fecha.getMonth() + indice);
+                      fecha.setMonth(fecha.getMonth() + indice-1);
                       return fecha;
                     }
 
@@ -436,8 +436,8 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
               </div>
 
               <div className="mt-3 text-xs text-blue-600 border-t border-blue-300 pt-2">
-                💡 <strong>Fecha límite de pago</strong> = Fecha inicio de la ronda + 7
-                días calendario
+                💡 <strong>Fecha límite de pago</strong> = Fecha inicio de ronda + 7
+                días
               </div>
             </div>
           )}

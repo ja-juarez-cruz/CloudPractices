@@ -12,6 +12,7 @@ import InicioView from './components/InicioView';
 import RegistroPublicoView from './components/RegistroPublicoView';
 import GlobalHeader from './components/GlobalHeader';
 import ConfiguracionAppView from './components/ConfiguracionAppView';
+import LoginView from './components/LoginView';
 
 // ===========================================
 // CONFIGURACIÓN DE LA API
@@ -146,26 +147,6 @@ export default function TandaManager() {
   const [password, setPassword] = useState('');
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-
-  // Handlers memoizados para evitar re-renders
-  const handleEmailChange = useCallback((e) => {
-    console.log('🔵 EMAIL onChange disparado:', e.target.value);
-    setEmail(e.target.value);
-  }, []);
-
-  const handlePasswordChange = useCallback((e) => {
-    console.log('🔴 PASSWORD onChange disparado:', e.target.value);
-    setPassword(e.target.value);
-  }, []);
-
-  const handleNombreChange = useCallback((e) => {
-    setNombre(e.target.value);
-  }, []);
-
-  const handleTelefonoChange = useCallback((e) => {
-    setTelefono(e.target.value);
-  }, []);
 
   // Estados para manejo de sesión
   const [showSessionModal, setShowSessionModal] = useState(false);
@@ -287,7 +268,10 @@ export default function TandaManager() {
     setLoading(true);
     setError(null);
     try {
+      const token = localStorage.getItem('authToken');
       console.log('🔄 Cargando tandas del usuario...');
+      console.log('🔑 Token presente:', token ? `Sí (${token.substring(0, 20)}...)` : 'NO');
+      
       const result = await api.tandas.listar();
       
       console.log('✅ Respuesta recibida:', result);
@@ -374,6 +358,28 @@ export default function TandaManager() {
     setPassword('');
   };
 
+  const handleLoginSuccess = useCallback(async (userData) => {
+    // LoginView ya verificó que el token existe, pero hacemos doble check por seguridad
+    const token = localStorage.getItem('authToken');
+    
+    if (!token) {
+      console.error('❌ Token no encontrado después de login');
+      setError('Error: No se pudo establecer la sesión');
+      return;
+    }
+    
+    console.log('✅ Token verificado en localStorage');
+    
+    setIsAdmin(true);
+    setCurrentView('admin');
+    setActiveView('inicio');
+    setTandaData(null);
+    setNombre(userData.nombre || '');
+    setEmail(userData.email || '');
+    
+    await loadAdminData();
+  }, [loadAdminData]);
+
   const copyPublicLink = () => {
     if (!tandaData) return;
     const publicUrl = `${window.location.origin}${window.location.pathname}?tanda=${tandaData.tandaId}`;
@@ -393,196 +399,7 @@ export default function TandaManager() {
   // ===========================================
   // COMPONENTE DE LOGIN/REGISTRO
   // ===========================================
-  const LoginView = () => {
-    const handleFormSubmit = useCallback(async (e) => {
-      e.preventDefault();
-      setLoading(true);
-      setError(null);
-      
-      try {
-        let result;
-        if (currentView === 'login') {
-          result = await api.auth.login(email, password);
-        } else {
-          result = await api.auth.register(email, password, nombre, telefono);
-        }
-        
-        if (result.success) {
-          setIsAdmin(true);
-          setCurrentView('admin');
-          setActiveView('inicio'); // Establecer vista inicial en Inicio
-          setTandaData(null); // Sin tanda seleccionada al inicio
-          await loadAdminData();
-        }
-      } catch (error) {
-        setError(error.message || 'Error en la operación');
-      } finally {
-        setLoading(false);
-      }
-    }, [currentView, email, password, nombre, telefono, loading]);
-    
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <div className="text-center mb-8">
-            <div className="inline-block p-4 bg-gradient-to-br from-orange-500 to-rose-500 rounded-3xl shadow-2xl mb-4">
-              <Users className="w-12 h-12 text-white" />
-            </div>
-            <h1 className="text-4xl font-black text-gray-800 mb-2">Administrador de Tandas</h1>
-            <p className="text-gray-600">Gestiona tu tanda de forma sencilla y profesional</p>
-          </div>
-
-          <div className="bg-white rounded-3xl shadow-xl p-8">
-            <div className="mb-6">
-              <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => setCurrentView('login')}
-                  className={`flex-1 py-2 px-4 rounded-lg font-semibold transition-all ${
-                    currentView === 'login'
-                      ? 'bg-white shadow-md text-orange-600'
-                      : 'text-gray-600 hover:text-gray-800'
-                  }`}
-                >
-                  Iniciar Sesión
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCurrentView('register')}
-                  className={`flex-1 py-2 px-4 rounded-lg font-semibold transition-all ${
-                    currentView === 'register'
-                      ? 'bg-white shadow-md text-orange-600'
-                      : 'text-gray-600 hover:text-gray-800'
-                  }`}
-                >
-                  Registrarse
-                </button>
-              </div>
-            </div>
-
-            <form onSubmit={handleFormSubmit}>
-              {currentView === 'register' && (
-                <>
-                  <div className="mb-4">
-                    <label htmlFor="nombre-input" className="block text-sm font-semibold text-gray-700 mb-2">
-                      Nombre Completo
-                    </label>
-                    <input
-                      id="nombre-input"
-                      name="nombre"
-                      type="text"
-                      value={nombre}
-                      onChange={handleNombreChange}
-                      autoComplete="name"
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-orange-500 focus:outline-none transition-colors"
-                      placeholder="Tu nombre"
-                      required
-                    />
-                  </div>
-                  <div className="mb-4">
-                    <label htmlFor="telefono-input" className="block text-sm font-semibold text-gray-700 mb-2">
-                      Teléfono
-                    </label>
-                    <input
-                      id="telefono-input"
-                      name="telefono"
-                      type="tel"
-                      value={telefono}
-                      onChange={handleTelefonoChange}
-                      autoComplete="tel"
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-orange-500 focus:outline-none transition-colors"
-                      placeholder="5512345678"
-                      required
-                    />
-                  </div>
-                </>
-              )}
-
-              <div className="mb-4">
-                <label htmlFor="email-input" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Correo Electrónico
-                </label>
-                <input
-                  id="email-input"
-                  name="email"
-                  type="email"
-                  value={email}
-                  onChange={handleEmailChange}
-                  autoComplete="email"
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-orange-500 focus:outline-none transition-colors"
-                  placeholder="tu@email.com"
-                  required
-                />
-              </div>
-
-              <div className="mb-6">
-                <label htmlFor="password-input" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Contraseña
-                </label>
-                <div className="relative">
-                  <input
-                    id="password-input"
-                    name="password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={handlePasswordChange}
-                    autoComplete={currentView === 'login' ? 'current-password' : 'new-password'}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-orange-500 focus:outline-none transition-colors pr-12"
-                    placeholder="••••••••"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                  >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-
-              {error && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
-                  {error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold py-3 px-6 rounded-xl hover:shadow-lg transform hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Cargando...' : currentView === 'login' ? 'Iniciar Sesión' : 'Crear Cuenta'}
-              </button>
-            </form>
-          </div>
-
-          <div className="mt-8 bg-gradient-to-r from-orange-500 to-rose-500 rounded-3xl p-6 text-white shadow-xl">
-            <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
-              <Shield className="w-5 h-5" />
-              Sistema Profesional de Tandas
-            </h3>
-            <ul className="space-y-2 text-sm">
-              <li className="flex items-center gap-2">
-                <CheckCircle className="w-4 h-4" />
-                Control total de participantes y pagos
-              </li>
-              <li className="flex items-center gap-2">
-                <CheckCircle className="w-4 h-4" />
-                Tablero público compartible
-              </li>
-              <li className="flex items-center gap-2">
-                <CheckCircle className="w-4 h-4" />
-                Estadísticas en tiempo real
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    );
-  };
-    
+  
   // ===========================================
   // TABLERO PÚBLICO
   // ===========================================
@@ -1007,5 +824,5 @@ export default function TandaManager() {
     );
   }
 
-  return <LoginView />;
+  return <LoginView onLoginSuccess={handleLoginSuccess} />;
 }

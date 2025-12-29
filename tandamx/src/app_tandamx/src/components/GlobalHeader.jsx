@@ -95,7 +95,7 @@ export default function GlobalHeader({ userName, onLogout, onOpenSettings }) {
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         @keyframes fadeIn {
           from {
             opacity: 0;
