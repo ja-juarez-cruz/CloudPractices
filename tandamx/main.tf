@@ -7,6 +7,18 @@ provider "aws" {
   profile = "terraform"
 }
 
+terraform {
+  backend "s3" {
+    bucket         = "terraform-backend-app-tandamx"
+    key            = "tandasmx/terraform.tfstate"
+    region         = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
+  }
+}
+
+
+
 # Tabla tandas
 resource "aws_dynamodb_table" "tandas" {
   name           = "tandas"
