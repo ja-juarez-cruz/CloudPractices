@@ -124,7 +124,8 @@ def registrar(event, context):
             'comprobante': body.get('comprobante', ''),
             'notas': body.get('notas', ''),
             'createdAt': timestamp,
-            'updatedAt': timestamp
+            'updatedAt': timestamp,
+            'exentoPago': body.get('exentoPago', False)
         }
         
         pagos_table.put_item(Item=pago)
@@ -196,6 +197,10 @@ def actualizar(event, context):
         if 'comprobante' in body:
             update_expression += ", comprobante = :comprobante"
             expression_values[':comprobante'] = body['comprobante']
+
+        if 'exentoPago' in body:
+            update_expression += ", exentoPago = :exentoPago"
+            expression_values[':exentoPago'] = body['exentoPago']
         
         # Actualizar
         pagos_table.update_item(
@@ -323,7 +328,11 @@ def obtener_matriz(event, context):
             key = f"{pago['participanteId']}_{int(pago['ronda'])}"
             pagos_dict[key] = {
                 'pagado': pago.get('pagado', False),
-                'fechaPago': pago.get('fechaPago')
+                'fechaPago': pago.get('fechaPago'),
+                'exentoPago': pago.get('exentoPago',False),
+                'metodoPago': pago.get('metodoPago'),
+                'monto': pago.get('monto'),
+                'notas': pago.get('notas')
             }
         
         ronda_actual = int(tanda['rondaActual'])
@@ -349,7 +358,11 @@ def obtener_matriz(event, context):
                 pagos_participante[str(ronda)] = {
                     'pagado': pago_info['pagado'],
                     'fechaPago': pago_info['fechaPago'],
-                    'esFuturo': ronda > ronda_actual
+                    'esFuturo': ronda > ronda_actual,
+                    'exentoPago': pago_info.get('exentoPago',False),
+                    'metodoPago': pago_info.get('metodoPago'),
+                    'monto': pago_info.get('monto'),
+                    'notas': pago_info.get('notas')
                 }
                 
                 if pago_info['pagado']:

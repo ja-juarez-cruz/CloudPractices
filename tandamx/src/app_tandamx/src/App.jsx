@@ -1,18 +1,24 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Users, DollarSign, Calendar, Send, Eye, EyeOff, Home, Settings, Bell, Share2, Check, LogOut, MessageCircle, CreditCard, Shield, CheckCircle, AlertCircle } from 'lucide-react';
+import { Users, Calendar, CreditCard, Settings, Share2, Check, MessageCircle, AlertCircle, CheckCircle, ArrowLeft, Menu, X } from 'lucide-react';
 
 // Importar componentes
 import DashboardView from './components/DashboardView';
 import CrearTandaView from './components/CrearTandaView';
 import ParticipantesView from './components/ParticipantesView';
 import PagosView from './components/PagosView';
-// import NotificacionesView from './components/NotificacionesView'; // TODO: Descomentar cuando se termine de afinar
 import ConfiguracionView from './components/ConfiguracionView';
 import InicioView from './components/InicioView';
 import RegistroPublicoView from './components/RegistroPublicoView';
 import GlobalHeader from './components/GlobalHeader';
 import ConfiguracionAppView from './components/ConfiguracionAppView';
 import LoginView from './components/LoginView';
+import PublicBoard from './components/PublicBoard';
+import RegistroCumpleView from './components/RegistroCumpleanosView'
+import DeleteAccountView from './components/DeleteAccountView';
+
+// Importar logos
+import logoTanda from './public/assets/logos/logo-tanda-512.png';
+import logoTandaSvg from './public/assets/logos/logo-tanda.svg';
 
 // ===========================================
 // CONFIGURACIÓN DE LA API
@@ -26,6 +32,9 @@ const api = {
     localStorage.removeItem('authToken');
     localStorage.removeItem('userId');
     localStorage.removeItem('userEmail');
+    localStorage.removeItem('userName');
+    localStorage.removeItem('activeView');
+    localStorage.removeItem('selectedTandaId');
   },
   
   getHeaders: () => {
@@ -39,17 +48,12 @@ const api = {
   handleResponse: async (response) => {
     const data = await response.json();
     
-    // Detectar token expirado o inválido
     if (response.status === 401 || response.status === 403) {
-      // Token expirado - disparar evento global
       window.dispatchEvent(new CustomEvent('token-expired'));
-      
-      const errorMessage = 'Sesión expirada. Por favor inicia sesión nuevamente.';
-      throw new Error(errorMessage);
+      throw new Error('Sesión expirada. Por favor inicia sesión nuevamente.');
     }
     
     if (!response.ok) {
-      // Log detallado del error
       console.error('❌ Error en API:', {
         status: response.status,
         statusText: response.statusText,
@@ -57,7 +61,7 @@ const api = {
         errorData: data
       });
       
-      const errorMessage = data.error?.message || data.message || `Error ${response.status}: ${response.statusText}`;
+      const errorMessage = data.error?.message || data.message || `Error ${response.status}`;
       throw new Error(errorMessage);
     }
     return data;
@@ -75,6 +79,7 @@ const api = {
         api.setToken(data.data.token);
         localStorage.setItem('userId', data.data.userId);
         localStorage.setItem('userEmail', data.data.email);
+        localStorage.setItem('userName', data.data.nombre);
       }
       return data;
     },
@@ -90,6 +95,7 @@ const api = {
         api.setToken(data.data.token);
         localStorage.setItem('userId', data.data.userId);
         localStorage.setItem('userEmail', data.data.email);
+        localStorage.setItem('userName', data.data.nombre);
       }
       return data;
     },
@@ -132,40 +138,125 @@ const api = {
 // COMPONENTE PRINCIPAL
 // ===========================================
 export default function TandaManager() {
+  // ========== ESTADOS PRINCIPALES ==========
   const [currentView, setCurrentView] = useState('login');
   const [isAdmin, setIsAdmin] = useState(false);
   const [tandaData, setTandaData] = useState(null);
   const [todasLasTandas, setTodasLasTandas] = useState([]);
-  const [activeView, setActiveView] = useState('dashboard');
-  const [showAppSettings, setShowAppSettings] = useState(false); // Nueva vista de configuración
-  const [copiedLink, setCopiedLink] = useState(false);
+  const [activeView, setActiveView] = useState('inicio');
+  const [showAppSettings, setShowAppSettings] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [estadisticas, setEstadisticas] = useState(null);
-  
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [nombre, setNombre] = useState('');
-  const [telefono, setTelefono] = useState('');
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+
+  // Estados de usuario
+  const [userName, setUserName] = useState('');
+  const [userEmail, setUserEmail] = useState('');
+  const [userPhone, setUserPhone] = useState('');
 
   // Estados para manejo de sesión
   const [showSessionModal, setShowSessionModal] = useState(false);
-  const [sessionExpired, setSessionExpired] = useState(false);
-  const lastActivityRef = useRef(Date.now()); // Usar ref en lugar de state
+  const lastActivityRef = useRef(Date.now());
 
-  // Detectar token expirado
+  
+  // ========== PERSISTENCIA DE ESTADO ==========
+  useEffect(() => {
+    if (isAdmin && tandaData?.tandaId) {
+      localStorage.setItem('selectedTandaId', tandaData.tandaId);
+      localStorage.setItem('activeView', activeView);
+    }
+  }, [activeView, tandaData?.tandaId, isAdmin]);
+
+
+  // ========== DETECCIÓN DE URL PARAMS ==========
+  useEffect(() => {
+    const hash = window.location.hash;
+    
+    // 🆕 PRIORIDAD 0: DELETE ACCOUNT (antes que todo)
+    if (hash === '#/delete-account') {
+      console.log('🗑️ Detectada ruta de eliminación de cuenta');
+      setCurrentView('delete-account');
+      setIsAdmin(false);
+      return;
+    }
+
+    
+    // 🆕 PRIORIDAD 1: REGISTRO CUMPLEAÑERO
+    if (hash.startsWith('#/registro-cumple/')) {
+      const token = hash.split('#/registro-cumple/')[1];
+      console.log('🎂 Detectada ruta de registro cumpleañero, token:', token);
+      setCurrentView('registro-cumple');
+      setTandaData({ registroToken: token });
+      setIsAdmin(false); // 🔧 IMPORTANTE: Forzar que no esté en modo admin
+      return; // 🔧 IMPORTANTE: Salir inmediatamente
+    }
+    
+    // PRIORIDAD 2: REGISTRO NORMAL
+    if (hash.startsWith('#/registro/')) {
+      const token = hash.split('#/registro/')[1];
+      console.log('📝 Detectada ruta de registro normal, token:', token);
+      setCurrentView('registro');
+      setTandaData({ registroToken: token });
+      setIsAdmin(false); // 🔧 IMPORTANTE: Forzar que no esté en modo admin
+      return; // 🔧 IMPORTANTE: Salir inmediatamente
+    }
+    
+    // PRIORIDAD 3: TABLERO PÚBLICO
+    const urlParams = new URLSearchParams(window.location.search);
+    const tandaId = urlParams.get('tanda');
+    
+    if (tandaId) {
+      console.log('📊 Detectada ruta pública, tandaId:', tandaId);
+      setCurrentView('public');
+      loadPublicData(tandaId);
+      setIsAdmin(false); // 🔧 IMPORTANTE: Forzar que no esté en modo admin
+      return;
+    }
+    
+    // PRIORIDAD 4: RESTAURAR SESIÓN (solo si no hay rutas públicas)
+    const restoreState = async () => {
+      const token = api.getToken();
+      const savedView = localStorage.getItem('activeView');
+      const savedTandaId = localStorage.getItem('selectedTandaId');
+      const savedUserName = localStorage.getItem('userName');
+      const savedUserEmail = localStorage.getItem('userEmail');
+
+      if (token && savedUserName && savedUserEmail) {
+        setIsAdmin(true);
+        setCurrentView('admin');
+        setUserName(savedUserName);
+        setUserEmail(savedUserEmail);
+
+        // Restaurar vista activa
+        if (savedView && savedView !== 'inicio' && savedView !== 'crear') {
+          setActiveView(savedView);
+        } else {
+          setActiveView('inicio');
+        }
+
+        // Cargar todas las tandas
+        await loadAdminData();
+
+        // Si había una tanda seleccionada, restaurarla
+        if (savedTandaId && savedView !== 'inicio') {
+          await seleccionarTanda(savedTandaId, false);
+        }
+      }
+    };
+
+    restoreState();
+  }, []);
+  
+  // ========== DETECCIÓN DE TOKEN EXPIRADO ==========
   useEffect(() => {
     const handleTokenExpired = () => {
-      setSessionExpired(true);
-      
-      // Si hay actividad reciente (menos de 5 min), mostrar modal
       const inactivityTime = Date.now() - lastActivityRef.current;
       const fiveMinutes = 5 * 60 * 1000;
       
       if (inactivityTime < fiveMinutes && isAdmin) {
         setShowSessionModal(true);
       } else {
-        // Logout directo si inactivo o no es admin
         handleSessionExpiredLogout();
       }
     };
@@ -177,15 +268,14 @@ export default function TandaManager() {
     };
   }, [isAdmin]);
 
-  // Detectar actividad del usuario
+  // ========== DETECCIÓN DE ACTIVIDAD ==========
   useEffect(() => {
     if (!isAdmin) return;
 
     const updateActivity = () => {
-      lastActivityRef.current = Date.now(); // Actualizar ref SIN causar re-render
+      lastActivityRef.current = Date.now();
     };
 
-    // Eventos que indican actividad
     window.addEventListener('mousemove', updateActivity);
     window.addEventListener('keydown', updateActivity);
     window.addEventListener('click', updateActivity);
@@ -199,55 +289,7 @@ export default function TandaManager() {
     };
   }, [isAdmin]);
 
-  // Función para logout por sesión expirada
-  const handleSessionExpiredLogout = () => {
-    api.auth.logout();
-    setIsAdmin(false);
-    setCurrentView('login');
-    setShowSessionModal(false);
-    setTandaData(null);
-    setTodasLasTandas([]);
-    setError('Tu sesión ha expirado. Por favor inicia sesión nuevamente.');
-  };
-
-  // Función para continuar sesión
-  const handleContinueSession = () => {
-    setShowSessionModal(false);
-    setSessionExpired(false);
-    // Usuario decidió continuar, se necesita re-login
-    setError('Por favor inicia sesión nuevamente para continuar.');
-    handleSessionExpiredLogout();
-  };
-
-  useEffect(() => {
-    // Detectar si es ruta de registro público usando hash
-    const hash = window.location.hash;
-    
-    // Hash routing: #/registro/token
-    if (hash.startsWith('#/registro/')) {
-      const token = hash.split('#/registro/')[1];
-      setCurrentView('registro');
-      setTandaData({ registroToken: token });
-      return;
-    }
-    
-    // Detectar si es vista pública de tanda
-    const urlParams = new URLSearchParams(window.location.search);
-    const tandaId = urlParams.get('tanda');
-    
-    if (tandaId) {
-      setCurrentView('public');
-      loadPublicData(tandaId);
-    } else {
-      const token = api.getToken();
-      if (token) {
-        setIsAdmin(true);
-        setCurrentView('admin');
-        loadAdminData();
-      }
-    }
-  }, []);
-
+  // ========== FUNCIONES DE CARGA DE DATOS ==========
   const loadPublicData = async (tandaId) => {
     setLoading(true);
     setError(null);
@@ -268,52 +310,34 @@ export default function TandaManager() {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('authToken');
-      console.log('🔄 Cargando tandas del usuario...');
-      console.log('🔑 Token presente:', token ? `Sí (${token.substring(0, 20)}...)` : 'NO');
-      
       const result = await api.tandas.listar();
-      
-      console.log('✅ Respuesta recibida:', result);
       
       if (result.success) {
         const tandas = result.data?.tandas || [];
-        console.log(`📊 Total de tandas encontradas: ${tandas.length}`);
-        
         setTodasLasTandas(tandas);
         
-        // Si hay una tanda seleccionada actualmente, cargar sus detalles
+        // Si hay una tanda cargada actualmente, refrescar sus datos
         if (tandaData?.tandaId) {
-          console.log(`🔄 Recargando tanda seleccionada: ${tandaData.tandaId}`);
           const tandaDetail = await api.tandas.obtener(tandaData.tandaId);
           if (tandaDetail.success) {
             setTandaData(tandaDetail.data);
-            // Cargar estadísticas de forma asíncrona sin bloquear
             await loadEstadisticas(tandaDetail.data.tandaId);
           }
         }
-        // Si no hay tanda seleccionada, mostrar vista de inicio
-        // (NO seleccionar automáticamente la primera)
       } else {
-        console.warn('⚠️ Respuesta sin éxito');
         setTodasLasTandas([]);
-        setTandaData(null);
       }
     } catch (error) {
       console.error('❌ Error cargando datos del admin:', error);
       setError(`Error al cargar datos: ${error.message}`);
       setTodasLasTandas([]);
-      setTandaData(null);
     } finally {
       setLoading(false);
     }
   };
 
   const loadEstadisticas = async (tandaId) => {
-    if (!tandaId) {
-      console.warn('No tandaId provided to loadEstadisticas');
-      return;
-    }
+    if (!tandaId) return;
     
     try {
       const result = await api.estadisticas.obtener(tandaId);
@@ -322,19 +346,44 @@ export default function TandaManager() {
       }
     } catch (error) {
       console.error('Error cargando estadísticas:', error);
-      // No mostrar error al usuario, las estadísticas son opcionales
       setEstadisticas(null);
     }
   };
 
-  const seleccionarTanda = async (tandaId) => {
+  // ========== RECARGAR DATOS AL CAMBIAR VISTA ==========
+  useEffect(() => {
+    if (tandaData?.tandaId && ['dashboard', 'participantes', 'pagos'].includes(activeView)) {
+      const recargarDatos = async () => {
+        try {
+          const tandaDetail = await api.tandas.obtener(tandaData.tandaId);
+          if (tandaDetail.success) {
+            setTandaData(tandaDetail.data);
+            
+            if (activeView === 'dashboard') {
+              await loadEstadisticas(tandaDetail.data.tandaId);
+            }
+          }
+        } catch (error) {
+          console.error('Error recargando datos:', error);
+        }
+      };
+      
+      recargarDatos();
+    }
+  }, [activeView]);
+
+  // ========== FUNCIONES DE NAVEGACIÓN ==========
+  const seleccionarTanda = async (tandaId, cambiarVista = true) => {
     setLoading(true);
     try {
       const tandaDetail = await api.tandas.obtener(tandaId);
       if (tandaDetail.success) {
         setTandaData(tandaDetail.data);
         await loadEstadisticas(tandaId);
-        setActiveView('dashboard');
+        if (cambiarVista) {
+          setActiveView('dashboard');
+        }
+        setShowMobileMenu(false);
       }
     } catch (error) {
       console.error('Error cargando tanda:', error);
@@ -347,19 +396,29 @@ export default function TandaManager() {
   const crearNuevaTanda = () => {
     setTandaData(null);
     setActiveView('crear');
+    setShowMobileMenu(false);
   };
 
+  const volverAInicio = () => {
+    setTandaData(null);
+    setActiveView('inicio');
+    localStorage.removeItem('selectedTandaId');
+    localStorage.removeItem('activeView');
+    setShowMobileMenu(false);
+  };
+
+  // ========== FUNCIONES DE AUTENTICACIÓN ==========
   const handleLogout = () => {
     api.auth.logout();
     setIsAdmin(false);
     setTandaData(null);
     setCurrentView('login');
-    setEmail('');
-    setPassword('');
+    setUserName('');
+    setUserEmail('');
+    setUserPhone('');
   };
 
   const handleLoginSuccess = useCallback(async (userData) => {
-    // LoginView ya verificó que el token existe, pero hacemos doble check por seguridad
     const token = localStorage.getItem('authToken');
     
     if (!token) {
@@ -368,196 +427,96 @@ export default function TandaManager() {
       return;
     }
     
-    console.log('✅ Token verificado en localStorage');
-    
     setIsAdmin(true);
     setCurrentView('admin');
     setActiveView('inicio');
     setTandaData(null);
-    setNombre(userData.nombre || '');
-    setEmail(userData.email || '');
+    setUserName(userData.nombre || '');
+    setUserEmail(userData.email || '');
     
     await loadAdminData();
-  }, [loadAdminData]);
+  }, []);
 
-  const copyPublicLink = () => {
-    if (!tandaData) return;
-    const publicUrl = `${window.location.origin}${window.location.pathname}?tanda=${tandaData.tandaId}`;
-    navigator.clipboard.writeText(publicUrl);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
+  const handleSessionExpiredLogout = () => {
+    api.auth.logout();
+    setIsAdmin(false);
+    setCurrentView('login');
+    setShowSessionModal(false);
+    setTandaData(null);
+    setTodasLasTandas([]);
+    setError('Tu sesión ha expirado. Por favor inicia sesión nuevamente.');
   };
 
-  const shareWhatsApp = () => {
-    if (!tandaData) return;
-    const publicUrl = `${window.location.origin}${window.location.pathname}?tanda=${tandaData.tandaId}`;
-    const mensaje = `¡Únete a nuestra tanda "${tandaData.nombre}"! Consulta el tablero aquí: ${publicUrl}`;
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(mensaje)}`;
-    window.open(whatsappUrl, '_blank');
+  const handleContinueSession = () => {
+    setShowSessionModal(false);
+    setError('Por favor inicia sesión nuevamente para continuar.');
+    handleSessionExpiredLogout();
   };
 
-  // ===========================================
-  // COMPONENTE DE LOGIN/REGISTRO
-  // ===========================================
-  
-  // ===========================================
-  // TABLERO PÚBLICO
-  // ===========================================
-  const PublicBoard = () => {
-    if (loading) {
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-orange-500 mx-auto mb-4"></div>
-            <p className="text-gray-600">Cargando...</p>
-          </div>
-        </div>
-      );
-    }
+  // ========== HANDLER PARA TANDA CREADA ==========
+  const handleTandaCreada = useCallback((nuevaTanda) => {
+    console.log('✅ Tanda creada exitosamente:', nuevaTanda);
+    setTandaData(nuevaTanda);
+    setActiveView('participantes');
+    loadAdminData(); // Recargar lista de tandas
+  }, []);
 
-    if (!tandaData) {
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 flex items-center justify-center p-4">
-          <div className="text-center">
-            <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Tanda no encontrada</h2>
-            <p className="text-gray-600">No se pudo cargar la información de la tanda</p>
-          </div>
-        </div>
-      );
-    }
-
-    // Calcular ronda actual basada en fecha (misma lógica que DashboardView)
-    const calcularRondaActual = () => {
-      if (!tandaData.fechaInicio) return 1;
-      
-      const fechaInicio = new Date(tandaData.fechaInicio);
-      const fechaActual = new Date();
-      const diasTranscurridos = Math.floor((fechaActual - fechaInicio) / (1000 * 60 * 60 * 24));
-      
-      let diasPorRonda = 7; // semanal
-      if (tandaData.frecuencia === 'quincenal') diasPorRonda = 15;
-      else if (tandaData.frecuencia === 'mensual') diasPorRonda = 30;
-      
-      const rondaCalculada = Math.floor(diasTranscurridos / diasPorRonda) + 1;
-      return Math.min(Math.max(1, rondaCalculada), tandaData.totalRondas);
-    };
-
-    const rondaActual = calcularRondaActual();
-
-    const proximoNumero = tandaData.participantes?.find(
-      p => p.numeroAsignado === rondaActual
-    );
+  // ===========================================
+  // BOTTOM NAVIGATION COMPONENT
+  // ===========================================
+  const BottomNavigation = () => {
+    const navItems = [
+      { id: 'dashboard', label: 'Resumen', icon: Calendar },
+      { id: 'participantes', label: 'Participantes', icon: Users },
+      { id: 'pagos', label: 'Pagos', icon: CreditCard },
+      { id: 'configuracion', label: 'Config', icon: Settings },
+    ];
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 p-4 md:p-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-white rounded-3xl shadow-xl p-6 md:p-8 mb-6">
-            <div className="text-center mb-6">
-              <div className="inline-block p-3 bg-gradient-to-br from-orange-500 to-rose-500 rounded-2xl mb-4">
-                <Users className="w-10 h-10 text-white" />
-              </div>
-              <h1 className="text-3xl md:text-4xl font-black text-gray-800 mb-2">
-                {tandaData.nombre}
-              </h1>
-              <p className="text-gray-600">Tablero Público</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-2xl p-4 text-center">
-                <DollarSign className="w-8 h-8 text-orange-600 mx-auto mb-2" />
-                <div className="text-2xl font-bold text-gray-800">
-                  ${tandaData.montoPorRonda?.toLocaleString()}
-                </div>
-                <div className="text-sm text-gray-600">Por Ronda</div>
-              </div>
-              <div className="bg-gradient-to-br from-rose-50 to-rose-100 rounded-2xl p-4 text-center">
-                <Calendar className="w-8 h-8 text-rose-600 mx-auto mb-2" />
-                <div className="text-2xl font-bold text-gray-800">
-                  Ronda {rondaActual} / {tandaData.totalRondas}
-                </div>
-                <div className="text-sm text-gray-600">Progreso</div>
-              </div>
-              <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-2xl p-4 text-center">
-                <Users className="w-8 h-8 text-amber-600 mx-auto mb-2" />
-                <div className="text-2xl font-bold text-gray-800">
-                  {tandaData.participantes?.length || 0}
-                </div>
-                <div className="text-sm text-gray-600">Participantes</div>
-              </div>
-            </div>
-
-            {proximoNumero && (
-              <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl p-6 text-white text-center mb-6">
-                <div className="text-sm font-semibold mb-1">Próximo Número</div>
-                <div className="text-4xl font-black mb-2">{proximoNumero.numeroAsignado}</div>
-                <div className="text-lg">{proximoNumero.nombre}</div>
-              </div>
-            )}
-          </div>
-
-          <div className="bg-white rounded-3xl shadow-xl p-6 md:p-8">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-              <Users className="w-6 h-6" />
-              Participantes
-            </h2>
-
-            <div className="space-y-3">
-              {(tandaData.participantes || [])
-                .sort((a, b) => a.numeroAsignado - b.numeroAsignado)
-                .map((participante) => {
-                  // Verificar si pagó la ronda actual usando el objeto pagos
-                  const pagos = participante.pagos || {};
-                  const pagoRondaActual = pagos[rondaActual];
-                  const pagadoRondaActual = pagoRondaActual && pagoRondaActual.pagado;
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-200 shadow-2xl z-40 safe-bottom">
+        <div className="max-w-7xl mx-auto px-2">
+          <div className="flex justify-around items-center h-16">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeView === item.id;
+              
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveView(item.id);
+                    setShowMobileMenu(false);
+                  }}
+                  className={`flex flex-col items-center justify-center flex-1 h-full transition-all relative ${
+                    isActive ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {/* Indicador superior */}
+                  {isActive && (
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-blue-600 rounded-b-full"></div>
+                  )}
                   
-                  const esProximo = participante.numeroAsignado === rondaActual;
+                  {/* Ícono con efecto */}
+                  <div className={`relative ${isActive ? 'transform -translate-y-1' : ''}`}>
+                    <Icon className={`w-6 h-6 transition-all ${
+                      isActive ? 'scale-110' : ''
+                    }`} />
+                    
+                    {/* Badge de notificación (ejemplo) */}
+                    {item.id === 'pagos' && isActive && (
+                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                    )}
+                  </div>
                   
-                  return (
-                    <div
-                      key={participante.participanteId}
-                      className={`p-4 rounded-2xl border-2 transition-all ${
-                        esProximo
-                          ? 'border-green-500 bg-green-50 shadow-md'
-                          : 'border-gray-200 bg-gray-50 hover:shadow-md'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-xl ${
-                            esProximo
-                              ? 'bg-green-500 text-white'
-                              : 'bg-gray-200 text-gray-700'
-                          }`}>
-                            {participante.numeroAsignado}
-                          </div>
-                          <div>
-                            <div className="font-semibold text-gray-800">{participante.nombre}</div>
-                            {esProximo && (
-                              <span className="text-sm text-green-600 font-semibold">
-                                ← Turno actual
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div>
-                          {pagadoRondaActual ? (
-                            <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-semibold flex items-center gap-1">
-                              <CheckCircle className="w-4 h-4" />
-                              Pagado R{rondaActual}
-                            </span>
-                          ) : (
-                            <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-semibold flex items-center gap-1">
-                              <AlertCircle className="w-4 h-4" />
-                              Pendiente R{rondaActual}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
+                  {/* Label */}
+                  <span className={`text-xs mt-1 font-medium ${
+                    isActive ? 'font-bold' : ''
+                  }`}>
+                    {item.label}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -568,74 +527,67 @@ export default function TandaManager() {
   // PANEL ADMIN
   // ===========================================
   const AdminPanel = () => {
-    // Mostrar vista de configuración de app
+    // Vista de configuración de app
     if (showAppSettings) {
       return (
         <>
           <GlobalHeader 
-            userName={nombre || localStorage.getItem('userEmail')?.split('@')[0] || 'Usuario'}
+            userName={userName}
+            userEmail={userEmail}
             onLogout={handleLogout}
             onOpenSettings={() => setShowAppSettings(true)}
+            onGoHome={volverAInicio}
+            showHomeButton={tandaData !== null}
+            currentTandaName={tandaData?.nombre}
           />
-          <ConfiguracionAppView
-            userData={{ nombre, email, telefono }}
-            onBack={() => setShowAppSettings(false)}
-            onAccountDeleted={handleLogout}
-          />
-        </>
-      );
-    }
-
-    if (loading && !tandaData && todasLasTandas.length === 0) {
-      return (
-        <>
-          <GlobalHeader 
-            userName={nombre || localStorage.getItem('userEmail')?.split('@')[0] || 'Usuario'}
-            onLogout={handleLogout}
-            onOpenSettings={() => setShowAppSettings(true)}
-          />
-          <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 flex items-center justify-center">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-orange-500 mx-auto mb-4"></div>
-              <p className="text-gray-600">Cargando datos...</p>
-            </div>
+          <div className="pb-20">
+            <ConfiguracionAppView
+              userData={{ nombre: userName, email: userEmail, telefono: userPhone }}
+              onBack={() => setShowAppSettings(false)}
+              onAccountDeleted={handleLogout}
+              onGoHome={volverAInicio}
+              showHomeButton={tandaData !== null}
+              currentTandaName={tandaData?.nombre}
+            />
           </div>
         </>
       );
     }
 
-    // Vista de Crear Tanda (cuando activeView === 'crear')
+    // Vista de Crear Tanda
     if (activeView === 'crear') {
       return (
         <>
           <GlobalHeader 
-            userName={nombre || localStorage.getItem('userEmail')?.split('@')[0] || 'Usuario'}
+            userName={userName}
+            userEmail={userEmail}
             onLogout={handleLogout}
             onOpenSettings={() => setShowAppSettings(true)}
+            onGoHome={volverAInicio}
+            showHomeButton={tandaData !== null}
+            currentTandaName={tandaData?.nombre}
           />
-          <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50">
+          <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-slate-50 pb-20">
             <div className="max-w-7xl mx-auto p-4 md:p-8 pt-8">
               <div className="mb-6 flex items-center justify-between">
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-800">Crear Nueva Tanda</h1>
+                  <h1 className="text-2xl font-bold text-gray-900">Crear Nueva Tanda</h1>
                   <p className="text-sm text-gray-600">Configura los detalles de tu nueva tanda</p>
                 </div>
                 <button
-                  onClick={() => {
-                    setActiveView('inicio');
-                    loadAdminData();
-                  }}
-                  className="px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-semibold text-sm"
+                  onClick={volverAInicio}
+                  className="flex items-center gap-2 px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-semibold text-sm"
                 >
+                  <ArrowLeft className="w-4 h-4" />
                   Cancelar
                 </button>
               </div>
-              <CrearTandaView 
-                setTandaData={setTandaData} 
-                setLoading={setLoading} 
-                setError={setError} 
-                loadAdminData={loadAdminData}
+              <CrearTandaView
+                setTandaData={handleTandaCreada}
                 setActiveView={setActiveView}
+                setLoading={setLoading}
+                setError={setError}
+                loadAdminData={loadAdminData}
               />
             </div>
           </div>
@@ -643,16 +595,20 @@ export default function TandaManager() {
       );
     }
 
-    // Vista de Inicio (cuando no hay tanda seleccionada)
-    if (!tandaData) {
+    // Vista de Inicio (sin tanda seleccionada)
+    if (!tandaData || activeView === 'inicio') {
       return (
         <>
           <GlobalHeader 
-            userName={nombre || localStorage.getItem('userEmail')?.split('@')[0] || 'Usuario'}
+            userName={userName}
+            userEmail={userEmail}
             onLogout={handleLogout}
             onOpenSettings={() => setShowAppSettings(true)}
+            onGoHome={volverAInicio}
+            showHomeButton={tandaData !== null}
+            currentTandaName={tandaData?.nombre}
           />
-          <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50">
+          <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-slate-50 pb-20">
             <div className="max-w-7xl mx-auto p-4 md:p-8 pt-8">
               <InicioView 
                 tandas={todasLasTandas}
@@ -666,117 +622,66 @@ export default function TandaManager() {
       );
     }
 
+    // Vista principal con tanda seleccionada
     return (
       <>
+        {/* Header Global */}
         <GlobalHeader 
-          userName={nombre || localStorage.getItem('userEmail')?.split('@')[0] || 'Usuario'}
+          userName={userName}
+          userEmail={userEmail}
           onLogout={handleLogout}
           onOpenSettings={() => setShowAppSettings(true)}
+          onGoHome={volverAInicio}
+          showHomeButton={tandaData !== null}
+          currentTandaName={tandaData?.nombre}
         />
-        <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50">
-          {/* Header de Tanda */}
-          <div className="bg-white shadow-md border-b border-gray-200">
-            <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-3">
-                {/* Botón Volver a Inicio */}
-                <button
-                  onClick={() => {
-                    setTandaData(null);
-                    setActiveView('inicio');
-                  }}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors group"
-                  title="Volver a Inicio"
-                >
-                  <Home className="w-5 h-5 text-gray-600 group-hover:text-orange-600" />
-                </button>
-                
-                <div className="w-px h-8 bg-gray-300"></div>
-                
-                <div className="p-2 bg-gradient-to-br from-orange-500 to-rose-500 rounded-xl">
-                  <Users className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-lg font-bold text-gray-800">{tandaData.nombre}</h1>
-                  <p className="text-xs text-gray-600">Gestión de tanda</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={shareWhatsApp}
-                  className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold text-xs"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  <span className="hidden sm:inline">WhatsApp</span>
-                </button>
-                <button
-                  onClick={copyPublicLink}
-                  className="flex items-center gap-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-semibold text-xs"
-                >
-                  {copiedLink ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
-                  <span className="hidden sm:inline">{copiedLink ? 'Copiado' : 'Compartir'}</span>
-                </button>
-              </div>
-            </div>
-          </div>
 
-        {/* Navigation Tabs - Solo las 4 pestañas de gestión */}
-        <div className="bg-white border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-4">
-            <div className="flex gap-2 overflow-x-auto">
-              {[
-                { id: 'dashboard', label: 'Resumen', icon: Calendar },
-                { id: 'participantes', label: 'Participantes', icon: Users },
-                { id: 'pagos', label: 'Pagos', icon: CreditCard },
-                // { id: 'notificaciones', label: 'Recordatorios', icon: Send }, // TODO: Descomentar cuando esté listo
-                { id: 'configuracion', label: 'Configuración', icon: Settings },
-              ].map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveView(item.id)}
-                    className={`flex items-center gap-2 px-4 py-3 font-semibold transition-all whitespace-nowrap ${
-                      activeView === item.id
-                        ? 'text-orange-600 border-b-2 border-orange-600'
-                        : 'text-gray-600 hover:text-gray-800'
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" />
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
+        {/* Content con padding inferior para el bottom nav */}
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-slate-50 pb-24">
+          <div className="max-w-7xl mx-auto p-4 md:p-8">
+            {activeView === 'dashboard' && <DashboardView tandaData={tandaData} estadisticas={estadisticas} onCrearTanda={crearNuevaTanda} />}
+            {activeView === 'participantes' && <ParticipantesView tandaData={tandaData} setTandaData={setTandaData} loadAdminData={loadAdminData} />}
+            {activeView === 'pagos' && <PagosView tandaData={tandaData} setTandaData={setTandaData} loadAdminData={loadAdminData} />}
+            {activeView === 'configuracion' && <ConfiguracionView tandaData={tandaData} setTandaData={setTandaData} loadAdminData={loadAdminData} setActiveView={setActiveView} />}
           </div>
         </div>
 
-        {/* Content */}
-        <div className="max-w-7xl mx-auto p-4 md:p-8">
-          {activeView === 'dashboard' && <DashboardView tandaData={tandaData} estadisticas={estadisticas} />}
-          {activeView === 'participantes' && <ParticipantesView tandaData={tandaData} setTandaData={setTandaData} loadAdminData={loadAdminData} />}
-          {activeView === 'pagos' && <PagosView tandaData={tandaData} setTandaData={setTandaData} loadAdminData={loadAdminData} />}
-          {/* TODO: Descomentar cuando NotificacionesView esté listo */}
-          {/* {activeView === 'notificaciones' && <NotificacionesView tandaData={tandaData} />} */}
-          {activeView === 'configuracion' && <ConfiguracionView tandaData={tandaData} setTandaData={setTandaData} loadAdminData={loadAdminData} setActiveView={setActiveView} />}
-        </div>
-      </div>
-    </>
+        {/* Bottom Navigation - Solo visible cuando hay tanda */}
+        <BottomNavigation />
+      </>
     );
   };
 
   // ===========================================
   // RENDER PRINCIPAL
   // ===========================================
+
+  // ========== VISTA DE REGISTRO CUMPLEAÑERO ========== 🆕
+  if (currentView === 'registro-cumple') {
+    return <RegistroCumpleView token={tandaData?.registroToken} />;
+  }
   
-  // Vista de registro público (sin autenticación)
+  // ========== VISTA DE ELIMINACIÓN DE CUENTA ========== 🆕
+  if (currentView === 'delete-account') {
+    return <DeleteAccountView />;
+  }
+  
+  // ========== VISTA DE REGISTRO PÚBLICO ==========
   if (currentView === 'registro') {
     return <RegistroPublicoView token={tandaData?.registroToken} />;
   }
   
+  // ========== VISTA PÚBLICA - TABLERO ==========
   if (currentView === 'public') {
-    return <PublicBoard />;
+    return (
+      <PublicBoard 
+        tandaData={tandaData} 
+        loading={loading} 
+      />
+    );
   }
 
+  // ========== VISTA ADMIN ==========
   if (currentView === 'admin' && isAdmin) {
     return (
       <>
@@ -790,9 +695,7 @@ export default function TandaManager() {
                 <div className="inline-block p-4 bg-yellow-100 rounded-full mb-4">
                   <AlertCircle className="w-12 h-12 text-yellow-600" />
                 </div>
-                <h3 className="text-2xl font-bold text-gray-800 mb-2">
-                  Sesión Expirada
-                </h3>
+                <h3 className="text-2xl font-bold text-gray-800 mb-2">Sesión Expirada</h3>
                 <p className="text-gray-600">
                   Tu sesión ha expirado por seguridad. ¿Deseas continuar trabajando?
                 </p>
@@ -801,7 +704,7 @@ export default function TandaManager() {
               <div className="space-y-3">
                 <button
                   onClick={handleContinueSession}
-                  className="w-full py-3 px-4 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
+                  className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
                 >
                   Iniciar Sesión Nuevamente
                 </button>
@@ -824,5 +727,47 @@ export default function TandaManager() {
     );
   }
 
+  // ========== VISTA LOGIN (DEFAULT) ==========
   return <LoginView onLoginSuccess={handleLoginSuccess} />;
+}
+
+// ===========================================
+// ESTILOS CSS GLOBALES
+// ===========================================
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .animate-fadeIn {
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    /* Safe area para dispositivos con notch */
+    .safe-bottom {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    /* Smooth scroll */
+    html {
+      scroll-behavior: smooth;
+    }
+
+    /* Prevenir scroll horizontal */
+    body {
+      overflow-x: hidden;
+    }
+  `;
+  if (!document.querySelector('style[data-app-styles]')) {
+    style.setAttribute('data-app-styles', 'true');
+    document.head.appendChild(style);
+  }
 }

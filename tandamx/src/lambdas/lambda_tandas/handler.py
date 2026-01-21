@@ -7,10 +7,11 @@ import json
 import boto3
 import os
 import jwt
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 import uuid
+import calendar
 
 
 #custom error
@@ -53,6 +54,26 @@ class DecimalEncoder(json.JSONEncoder):
         if isinstance(obj, Decimal):
             return int(obj) if obj % 1 == 0 else float(obj)
         return super(DecimalEncoder, self).default(obj)
+
+def calcular_fecha_inicio(fecha_str: str) -> str:
+    """
+    Regla:
+    - Día 1–15  → día 15 del mismo mes
+    - Día > 15 → último día del mes
+
+    fecha_str: 'YYYY-MM-DD'
+    return: 'YYYY-MM-DD'
+    """
+    fecha = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+    dia = fecha.day
+
+    if dia <= 15:
+        fecha_inicio = date(fecha.year, fecha.month, 15)
+    else:
+        ultimo_dia = calendar.monthrange(fecha.year, fecha.month)[1]
+        fecha_inicio = date(fecha.year, fecha.month, ultimo_dia)
+
+    return fecha_inicio.isoformat()
 
 def extract_user_id(event):
     """Extrae el userId del token JWT"""
@@ -274,13 +295,17 @@ def crear(event, context):
         timestamp = datetime.utcnow().isoformat()
         
         # Crear tanda
+        if body['frecuencia']== 'quincenal':
+            fechaInico = calcular_fecha_inicio(body.get('fechaInicio', timestamp.split('T')[0]))
+        else:
+            fechaInico = body.get('fechaInicio', timestamp.split('T')[0])
         tanda = {
             'id': tanda_id,
             'nombre': body['nombre'],
             'montoPorRonda': Decimal(str(body['montoPorRonda'])),
             'totalRondas': int(body['totalRondas']),
             'rondaActual': 1,
-            'fechaInicio': body.get('fechaInicio', timestamp.split('T')[0]),
+            'fechaInicio': fechaInico,
             'adminId': user_id,
             'configuracion': body.get('configuracion', {
                 'recordatoriosDias': 3,
@@ -377,7 +402,10 @@ def obtener(event, context):
                 pagos_por_ronda[ronda] = {
                     'pagado': pago.get('pagado', False),
                     'fechaPago': pago.get('fechaPago', ''),
-                    'monto': float(pago.get('monto', 0))
+                    'monto': float(pago.get('monto', 0)),
+                    'exentoPago': pago.get('exentoPago',False),
+                    'metodoPago': pago.get('metodoPago'),
+                    'notas': pago.get('notas')
                 }
             
             # Agregar pagos al participante
@@ -516,7 +544,9 @@ def listar(event, context):
                     'nombre': p['nombre'],
                     'telefono': p.get('telefono'),
                     'email': p.get('email'),
-                    'numeroAsignado': p['numeroAsignado']
+                    'numeroAsignado': p['numeroAsignado'],
+                    'fechaCumpleaños': p.get('fechaCumpleaños',''),
+                    'fechaRegistro': p.get('fechaRegistro','')
                 })
             
             tandas_response.append({
@@ -1063,6 +1093,8 @@ def generar_link_registro(event, context):
             }
         
         tanda = response['Item']
+        # 🆕 Determinar tipo de tanda
+        es_cumpleañera = tanda.get('frecuencia') == 'cumpleaños'
         
         # Generar token único
         token = str(uuid.uuid4())
@@ -1083,7 +1115,8 @@ def generar_link_registro(event, context):
                 'createdAt': datetime.utcnow().isoformat(),
                 'activo': True,
                 # TTL para auto-eliminación (expira 24h después de expiración)
-                'ttl': expiracion_timestamp + (24 * 3600)
+                'ttl': expiracion_timestamp + (24 * 3600),
+                'tipo': 'cumpleañera' if es_cumpleañera else 'normal'  # 🆕 Tipo de link
             }
         )
         

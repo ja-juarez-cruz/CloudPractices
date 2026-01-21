@@ -1,58 +1,160 @@
 import React, { useState } from 'react';
-import { Users, Plus, Edit, Trash2, X, Save, Phone, Mail, MessageCircle, Link as LinkIcon, Copy, Check } from 'lucide-react';
+import { Users, Plus, Edit, Trash2, X, Save, Phone, Mail, MessageCircle, Link as LinkIcon, Copy, Check, ArrowLeft, AlertCircle, MessageSquare, FileText, MoreVertical, ChevronDown, Calendar, Gift, CheckCircle } from 'lucide-react';
 
 const API_BASE_URL = 'https://9l2vrevqm1.execute-api.us-east-1.amazonaws.com/dev';
+const BASE_URL_ESTATIC_WEB = "https://app-tandamx.s3.us-east-1.amazonaws.com"
 
-export default function ParticipantesView({ tandaData, setTandaData, loadAdminData }) {
+export default function ParticipantesView({ tandaData, setTandaData, loadAdminData, onBack }) {
   const [showModal, setShowModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
+  const [showMensajeModal, setShowMensajeModal] = useState(false);
+  const [showComentarioModal, setShowComentarioModal] = useState(false);
   const [participanteAEliminar, setParticipanteAEliminar] = useState(null);
   const [editingParticipante, setEditingParticipante] = useState(null);
+  const [participanteSeleccionado, setParticipanteSeleccionado] = useState(null);
+  const [tipoMensaje, setTipoMensaje] = useState(null);
+  const [mensajeTexto, setMensajeTexto] = useState('');
+  const [comentarioTexto, setComentarioTexto] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [linkRegistro, setLinkRegistro] = useState(null);
   const [linkCopiado, setLinkCopiado] = useState(false);
+  const [menuAbierto, setMenuAbierto] = useState(null);
   
   const [formData, setFormData] = useState({
     nombre: '',
     telefono: '',
     email: '',
-    numeroAsignado: ''
+    numerosAsignados: [],
+    fechaCumpleaños: ''
   });
 
+  // Verificar si es tanda cumpleañera
+  const esCumpleañera = tandaData?.frecuencia === 'cumpleaños';
+
+  function ultimoDiaDelMes(fecha) {
+    return new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0);
+  }
+  
+  function calcularFechaRonda(indice, fechaCumpleaños = null) {
+    // Para tandas cumpleañeras, usar la fecha de cumpleaños del participante
+    if (esCumpleañera && fechaCumpleaños) {
+      console.log('fecha cumple (',indice,'): ',fechaCumpleaños)
+      const [y, m, d] = fechaCumpleaños.split("-");
+      const fechaCumplelocal = new Date(y, m - 1, d);
+      return new Date(fechaCumplelocal);
+    }
+
+    //console.log('fecha inicio (',indice,'): ',tandaData.fechaInicio)
+    const fecha = new Date(tandaData.fechaInicio);
+    const frecuencia = tandaData.frecuencia;
+
+    
+    if (frecuencia === "semanal") {
+      if (indice === 1) {
+        fecha.setDate(fecha.getDate());
+      } else {
+        fecha.setDate(fecha.getDate() + 7 * (indice - 1));
+      }
+      fecha.setDate(fecha.getDate() + 1);
+      return fecha;
+    }
+
+    if (frecuencia === "mensual") {
+      fecha.setMonth(fecha.getMonth() + indice - 1);
+      fecha.setDate(fecha.getDate() + 1);
+      return fecha;
+    }
+
+    if (frecuencia === "quincenal") {
+      let temp = new Date(fecha);
+      let diaInicial = temp.getDate();
+      let esFinDeMes = diaInicial > 15;
+
+      for (let i = 1; i <= indice; i++) {
+        if (esFinDeMes) {
+          temp = ultimoDiaDelMes(temp);
+        } else {
+          temp.setDate(15);
+        }
+
+        if (i < indice) {
+          if (esFinDeMes) {
+            temp.setDate(1);
+            temp.setMonth(temp.getMonth() + 1);
+            temp.setDate(15);
+          } else {
+            temp = ultimoDiaDelMes(temp);
+          }
+          esFinDeMes = !esFinDeMes;
+        }
+      }
+      return temp;
+    }
+    //console.log('fecha calculada(',indice,'): ',fecha)
+    return fecha;
+    
+  }
+
+  // Función para calcular el próximo número automático en tanda cumpleañera
+  const calcularNumeroAutomatico = (nuevaFechaCumpleaños) => {
+    if (!esCumpleañera) return 1;
+    
+    const participantes = tandaData.participantes || [];
+    
+    // Si no hay participantes, es el número 1
+    if (participantes.length === 0) return 1;
+
+    // Crear lista con todos los participantes más el nuevo
+    const todosLosParticipantes = [
+      ...participantes.map(p => ({
+        fechaCumpleaños: new Date(p.fechaCumpleaños),
+        fechaRegistro: new Date(p.fechaRegistro || p.createdAt),
+        participanteId: p.participanteId
+      })),
+      {
+        fechaCumpleaños: new Date(nuevaFechaCumpleaños),
+        fechaRegistro: new Date(), // Fecha actual para el nuevo
+        esNuevo: true
+      }
+    ];
+
+    // Ordenar por fecha de cumpleaños (mes y día), luego por fecha de registro
+    todosLosParticipantes.sort((a, b) => {
+      // Comparar solo mes y día del cumpleaños
+      const mesA = a.fechaCumpleaños.getMonth();
+      const diaA = a.fechaCumpleaños.getDate();
+      const mesB = b.fechaCumpleaños.getMonth();
+      const diaB = b.fechaCumpleaños.getDate();
+
+      if (mesA !== mesB) {
+        return mesA - mesB;
+      }
+      if (diaA !== diaB) {
+        return diaA - diaB;
+      }
+      
+      // Si tienen el mismo cumpleaños, ordenar por fecha de registro
+      return a.fechaRegistro - b.fechaRegistro;
+    });
+
+    // Encontrar la posición del nuevo participante
+    const posicion = todosLosParticipantes.findIndex(p => p.esNuevo);
+    return posicion + 1;
+  };
+  
   const numerosDisponibles = () => {
     if (!tandaData) return [];
+    
+    // Para tandas cumpleañeras, no hay números "disponibles" para seleccionar
+    if (esCumpleañera) return [];
+    
     const numerosOcupados = tandaData.participantes?.map(p => p.numeroAsignado) || [];
     const todos = Array.from({ length: tandaData.totalRondas }, (_, i) => i + 1);
     return todos.filter(n => !numerosOcupados.includes(n));
   };
 
-  const calcularFechaPago = (numeroAsignado) => {
-    if (!tandaData.fechaInicio || !numeroAsignado) return null;
-    
-    const fechaInicio = new Date(tandaData.fechaInicio);
-    let diasPorRonda = 7; // semanal
-    if (tandaData.frecuencia === 'quincenal') diasPorRonda = 15;
-    else if (tandaData.frecuencia === 'mensual') diasPorRonda = 30;
-    
-    // Calcular fecha de inicio de la ronda del participante
-    const diasHastaRonda = (numeroAsignado - 1) * diasPorRonda;
-    const fechaInicioRonda = new Date(fechaInicio);
-    fechaInicioRonda.setDate(fechaInicioRonda.getDate() + diasHastaRonda);
-    
-    // Fecha de siguiente ronda
-    const fechaSiguienteRonda = new Date(fechaInicioRonda);
-    fechaSiguienteRonda.setDate(fechaSiguienteRonda.getDate() + diasPorRonda);
-    
-    // Fecha de pago: 1 día antes de que empiece la siguiente ronda
-    const fechaPago = new Date(fechaSiguienteRonda);
-    fechaPago.setDate(fechaPago.getDate() - 1);
-    
-    return fechaPago;
-  };
-
-  // Función para verificar si existe un link vigente
   const verificarLinkVigente = async () => {
     try {
       const token = localStorage.getItem('authToken');
@@ -69,9 +171,11 @@ export default function ParticipantesView({ tandaData, setTandaData, loadAdminDa
       const data = await response.json();
       
       if (response.ok && data.success && data.data) {
-        // Hay un link vigente
-        const baseUrl = window.location.origin;
-        const link = `${baseUrl}/index.html#/registro/${data.data.token}`;
+        const baseUrl = BASE_URL_ESTATIC_WEB;
+        // 🆕 CORREGIDO - Usar la ruta correcta según el tipo de tanda
+        const ruta = esCumpleañera ? 'registro-cumple' : 'registro';
+        const link = `${baseUrl}/index.html#/${ruta}/${data.data.token}`;
+        
         setLinkRegistro({
           url: link,
           token: data.data.token,
@@ -87,21 +191,18 @@ export default function ParticipantesView({ tandaData, setTandaData, loadAdminDa
     }
   };
 
-  // Función para generar link temporal de registro
   const generarLinkRegistro = async (duracionHoras) => {
     setLoading(true);
     setError(null);
     
     try {
-      // Primero verificar si existe un link vigente
       const hayLinkVigente = await verificarLinkVigente();
       
       if (hayLinkVigente) {
         setLoading(false);
-        return; // Ya tenemos un link vigente, no generamos uno nuevo
+        return;
       }
 
-      // Si no hay link vigente, generar uno nuevo
       const token = localStorage.getItem('authToken');
       const response = await fetch(
         `${API_BASE_URL}/tandas/${tandaData.tandaId}/registro-link`,
@@ -124,8 +225,10 @@ export default function ParticipantesView({ tandaData, setTandaData, loadAdminDa
       }
 
       if (data.success) {
-        const baseUrl = window.location.origin;
-        const link = `${baseUrl}/index.html#/registro/${data.data.token}`;
+        const baseUrl = BASE_URL_ESTATIC_WEB;
+        // 🆕 Ruta diferente según el tipo
+        const ruta = esCumpleañera ? 'registro-cumple' : 'registro';
+        const link = `${baseUrl}/index.html#/${ruta}/${data.data.token}`;
         setLinkRegistro({
           url: link,
           token: data.data.token,
@@ -141,7 +244,6 @@ export default function ParticipantesView({ tandaData, setTandaData, loadAdminDa
     }
   };
 
-  // Función para copiar link al portapapeles
   const copiarLink = () => {
     if (linkRegistro?.url) {
       navigator.clipboard.writeText(linkRegistro.url);
@@ -150,17 +252,47 @@ export default function ParticipantesView({ tandaData, setTandaData, loadAdminDa
     }
   };
 
-  // Función para compartir por WhatsApp
   const compartirWhatsApp = () => {
     if (!linkRegistro?.url) return;
     
-    const mensaje = `🎉 *¡Únete a nuestra Tanda!*
+    let mensaje = '';
+    
+    if (esCumpleañera) {
+      mensaje = `🎂 *¡Únete a nuestra Tanda Cumpleañera!*
+
+📋 *${tandaData.nombre}*
+
+💰 Aportación por persona: $${tandaData.montoPorRonda?.toLocaleString()}
+👥 Total de participantes: ${tandaData.totalRondas}
+🎁 Recibirás en tu cumpleaños: $${(tandaData.montoPorRonda * (tandaData.totalRondas - 1))?.toLocaleString()}
+
+🔗 *Regístrate aquí:*
+${linkRegistro.url}
+
+✨ *Instrucciones:*
+1. Haz clic en el link
+2. Ingresa tu nombre y teléfono
+3. *IMPORTANTE:* Ingresa tu fecha de cumpleaños
+4. Tu número se asignará automáticamente según tu fecha
+5. ¡Listo! Recibirás el dinero en tu cumpleaños
+
+⏱️ *Link válido por ${linkRegistro.duracionHoras} horas*`;
+    } else {
+      const fechaInicio = new Date(tandaData.fechaInicio);
+      fechaInicio.setDate(fechaInicio.getDate() + 1);
+      mensaje = `🎉 *¡Únete a nuestra Tanda!*
 
 📋 *${tandaData.nombre}*
 
 💰 Monto por ronda: $${tandaData.montoPorRonda?.toLocaleString()}
 📅 Total de rondas: ${tandaData.totalRondas}
 ⏰ Frecuencia: ${tandaData.frecuencia}
+📅 Fecha Inicio: ${fechaInicio?.toLocaleDateString('es-MX', { 
+                              weekday: 'long',
+                              day: 'numeric', 
+                              month: 'long',
+                              year: 'numeric'
+                            })}
 
 🔗 *Regístrate aquí:*
 ${linkRegistro.url}
@@ -172,50 +304,38 @@ ${linkRegistro.url}
 4. ¡Listo! Serás parte de la tanda
 
 ⏱️ *Link válido por ${linkRegistro.duracionHoras} horas*`;
+    }
 
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(mensaje)}`;
     window.open(whatsappUrl, '_blank');
   };
 
-  // Función para generar el link público de la tanda
   const generarLinkPublico = () => {
-    const baseUrl = window.location.origin;
-    return `${baseUrl}index.html#?tanda=${tandaData.tandaId}`;
+    const baseUrl = BASE_URL_ESTATIC_WEB;
+    return `${baseUrl}/index.html?tanda=${tandaData.tandaId}`;
   };
 
-  // Función para enviar mensaje de pago realizado
   const enviarMensajePagoRealizado = (participante) => {
-    const linkPublico = generarLinkPublico();
-    const fechaPago = calcularFechaPago(participante.numeroAsignado);
-    const fechaTexto = fechaPago 
-      ? fechaPago.toLocaleDateString('es-MX', { 
-          weekday: 'long', 
-          day: 'numeric', 
-          month: 'long', 
-          year: 'numeric' 
-        })
-      : 'pronto';
-    
+    const totalRecibir = esCumpleañera 
+      ? tandaData.montoPorRonda * (tandaData.totalRondas - 1)
+      : tandaData.montoPorRonda * tandaData.totalRondas;
+
     const mensaje = `¡Hola ${participante.nombre}! 👋
 
 ✅ *Confirmación de Pago*
 
-Tu pago de la tanda *${tandaData.nombre}* ha sido registrado correctamente.
+Tu pago de la tanda *${tandaData.nombre}* se ha realizado correctamente.
 
-📅 *Recibirás tu pago el:* ${fechaTexto}
-💰 *Monto a recibir:* $${(tandaData.montoPorRonda * tandaData.totalRondas).toLocaleString()}
+💰 *Monto a recibir:* $${totalRecibir.toLocaleString()}
 
-Puedes ver el detalle completo de la tanda en:
-${linkPublico}
+¡Gracias por tu confianza! 🎉`;
 
-¡Gracias por tu puntualidad! 🎉`;
-
-    const telefono = participante.telefono.replace(/\D/g, '');
-    const whatsappUrl = `https://wa.me/521${telefono}?text=${encodeURIComponent(mensaje)}`;
-    window.open(whatsappUrl, '_blank');
+    setParticipanteSeleccionado(participante);
+    setTipoMensaje('realizado');
+    setMensajeTexto(mensaje);
+    setShowMensajeModal(true);
   };
 
-  // Función para enviar recordatorio de pago pendiente
   const enviarMensajePagoPendiente = (participante) => {
     const linkPublico = generarLinkPublico();
     const rondaActual = calcularRondaActual();
@@ -227,9 +347,8 @@ ${linkPublico}
 Te recordamos que tienes un pago pendiente en la tanda *${tandaData.nombre}*.
 
 📋 *Detalles:*
-• Ronda actual: ${rondaActual}
-• Monto por ronda: $${tandaData.montoPorRonda.toLocaleString()}
-• Tu número: ${participante.numeroAsignado}
+- Ronda actual: ${rondaActual}
+- Monto por ronda: $${tandaData.montoPorRonda.toLocaleString()}
 
 Por favor, realiza tu pago lo antes posible para mantenernos al día.
 
@@ -238,12 +357,78 @@ ${linkPublico}
 
 ¡Gracias por tu atención! 🙏`;
 
-    const telefono = participante.telefono.replace(/\D/g, '');
-    const whatsappUrl = `https://wa.me/521${telefono}?text=${encodeURIComponent(mensaje)}`;
-    window.open(whatsappUrl, '_blank');
+    setParticipanteSeleccionado(participante);
+    setTipoMensaje('pendiente');
+    setMensajeTexto(mensaje);
+    setShowMensajeModal(true);
   };
 
-  // Función para calcular ronda actual
+  const confirmarEnvioWhatsApp = () => {
+    if (!participanteSeleccionado || !mensajeTexto) return;
+    
+    const telefono = participanteSeleccionado.telefono.replace(/\D/g, '');
+    const whatsappUrl = `https://wa.me/521${telefono}?text=${encodeURIComponent(mensajeTexto)}`;
+    window.open(whatsappUrl, '_blank');
+    
+    setShowMensajeModal(false);
+    setParticipanteSeleccionado(null);
+    setMensajeTexto('');
+    setTipoMensaje(null);
+  };
+
+  const abrirComentarioModal = (participante) => {
+    setParticipanteSeleccionado(participante);
+    setComentarioTexto(participante.comentarios || '');
+    setShowComentarioModal(true);
+  };
+
+  const guardarComentario = async () => {
+    if (!participanteSeleccionado) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(
+        `${API_BASE_URL}/tandas/${tandaData.tandaId}/participantes/${participanteSeleccionado.participanteId}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            nombre: participanteSeleccionado.nombre,
+            telefono: participanteSeleccionado.telefono,
+            email: participanteSeleccionado.email,
+            numeroAsignado: participanteSeleccionado.numeroAsignado,
+            fechaCumpleaños: participanteSeleccionado.fechaCumpleaños,
+            comentarios: comentarioTexto || undefined
+          })
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error?.message || 'Error al guardar comentario');
+      }
+
+      if (data.success) {
+        await loadAdminData();
+        setShowComentarioModal(false);
+        setParticipanteSeleccionado(null);
+        setComentarioTexto('');
+      }
+    } catch (error) {
+      console.error('Error guardando comentario:', error);
+      setError(error.message || 'Error al guardar comentario');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const calcularRondaActual = () => {
     if (!tandaData.fechaInicio) return 1;
     
@@ -266,16 +451,17 @@ ${linkPublico}
         nombre: participante.nombre,
         telefono: participante.telefono,
         email: participante.email || '',
-        numeroAsignado: participante.numeroAsignado
+        numerosAsignados: [participante.numeroAsignado],
+        fechaCumpleaños: participante.fechaCumpleaños || ''
       });
     } else {
       setEditingParticipante(null);
-      const disponibles = numerosDisponibles();
       setFormData({
         nombre: '',
         telefono: '',
         email: '',
-        numeroAsignado: disponibles.length > 0 ? disponibles[0] : ''
+        numerosAsignados: [],
+        fechaCumpleaños: ''
       });
     }
     setShowModal(true);
@@ -289,7 +475,8 @@ ${linkPublico}
       nombre: '',
       telefono: '',
       email: '',
-      numeroAsignado: ''
+      numerosAsignados: [],
+      fechaCumpleaños: ''
     });
     setError(null);
   };
@@ -300,36 +487,120 @@ ${linkPublico}
     setError(null);
 
     try {
-      const token = localStorage.getItem('authToken');
-      const url = editingParticipante
-        ? `${API_BASE_URL}/tandas/${tandaData.tandaId}/participantes/${editingParticipante.participanteId}`
-        : `${API_BASE_URL}/tandas/${tandaData.tandaId}/participantes`;
-      
-      const method = editingParticipante ? 'PUT' : 'POST';
+      // Validación para tanda cumpleañera
+      if (esCumpleañera && !formData.fechaCumpleaños) {
+        throw new Error('La fecha de cumpleaños es obligatoria para tandas cumpleañeras');
+      }
 
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
+      const token = localStorage.getItem('authToken');
+      
+      if (editingParticipante) {
+        const url = `${API_BASE_URL}/tandas/${tandaData.tandaId}/participantes/${editingParticipante.participanteId}`;
+        
+        const requestBody = {
           nombre: formData.nombre,
           telefono: formData.telefono,
           email: formData.email || undefined,
-          numeroAsignado: parseInt(formData.numeroAsignado)
-        })
-      });
+          numeroAsignado: formData.numerosAsignados[0]
+        };
 
-      const data = await response.json();
+        // Agregar fecha de cumpleaños solo si es tanda cumpleañera
+        if (esCumpleañera) {
+          requestBody.fechaCumpleaños = formData.fechaCumpleaños;
+        }
 
-      if (!response.ok) {
-        throw new Error(data.error?.message || 'Error al guardar participante');
-      }
+        const response = await fetch(url, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(requestBody)
+        });
 
-      if (data.success) {
-        await loadAdminData();
-        closeModal();
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error?.message || 'Error al actualizar participante');
+        }
+
+        if (data.success) {
+          await loadAdminData();
+          closeModal();
+        }
+      } else {
+        // CREAR NUEVO PARTICIPANTE
+        if (esCumpleañera) {
+          // Para tanda cumpleañera: calcular número automáticamente
+          const numeroAutomatico = calcularNumeroAutomatico(formData.fechaCumpleaños);
+          
+          const requestBody = {
+            nombre: formData.nombre,
+            telefono: formData.telefono,
+            email: formData.email || undefined,
+            numeroAsignado: numeroAutomatico,
+            fechaCumpleaños: formData.fechaCumpleaños
+          };
+
+          const response = await fetch(`${API_BASE_URL}/tandas/${tandaData.tandaId}/participantes`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(requestBody)
+          });
+
+          const data = await response.json();
+          
+          if (!response.ok) {
+            throw new Error(data.error?.message || 'Error al crear participante');
+          }
+
+          await loadAdminData();
+          closeModal();
+        } else {
+          // Para tanda normal: selección múltiple de números
+          const maxNumeros = Math.floor(tandaData.totalRondas * 0.5);
+          
+          if (formData.numerosAsignados.length > maxNumeros) {
+            throw new Error(`Solo puedes seleccionar hasta ${maxNumeros} números (50% del total)`);
+          }
+
+          if (formData.numerosAsignados.length === 0) {
+            throw new Error('Debes seleccionar al menos un número');
+          }
+
+          const promesas = formData.numerosAsignados.map(numeroAsignado => {
+            const requestBody = {
+              nombre: formData.nombre,
+              telefono: formData.telefono,
+              email: formData.email || undefined,
+              numeroAsignado: parseInt(numeroAsignado)
+            };
+
+            return fetch(`${API_BASE_URL}/tandas/${tandaData.tandaId}/participantes`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify(requestBody)
+            });
+          });
+
+          const respuestas = await Promise.all(promesas);
+          
+          for (const response of respuestas) {
+            const data = await response.json();
+            if (!response.ok) {
+              throw new Error(data.error?.message || 'Error al crear participante');
+            }
+          }
+
+          await loadAdminData();
+          closeModal();
+        }
       }
     } catch (error) {
       console.error('Error guardando participante:', error);
@@ -390,275 +661,639 @@ ${linkPublico}
     }));
   };
 
+  const toggleNumero = (numero) => {
+    setFormData(prev => {
+      const numerosActuales = prev.numerosAsignados;
+      const maxNumeros = Math.floor(tandaData.totalRondas * 0.5);
+      
+      if (numerosActuales.includes(numero)) {
+        return {
+          ...prev,
+          numerosAsignados: numerosActuales.filter(n => n !== numero)
+        };
+      } else {
+        if (numerosActuales.length >= maxNumeros) {
+          setError(`Solo puedes seleccionar hasta ${maxNumeros} números (50% del total)`);
+          setTimeout(() => setError(null), 3000);
+          return prev;
+        }
+        return {
+          ...prev,
+          numerosAsignados: [...numerosActuales, numero].sort((a, b) => a - b)
+        };
+      }
+    });
+  };
+
   if (!tandaData) return null;
 
   const participantes = tandaData.participantes || [];
   const disponibles = numerosDisponibles();
 
+  // Ordenar participantes por número asignado
+  const participantesOrdenados = esCumpleañera
+    ? [...participantes].sort((a, b) => {
+        // Para cumpleañera, ordenar por fecha de cumpleaños
+        const fechaA = new Date(a.fechaCumpleaños);
+        const fechaB = new Date(b.fechaCumpleaños);
+        
+        const mesA = fechaA.getMonth();
+        const diaA = fechaA.getDate();
+        const mesB = fechaB.getMonth();
+        const diaB = fechaB.getDate();
+
+        if (mesA !== mesB) return mesA - mesB;
+        if (diaA !== diaB) return diaA - diaB;
+        
+        // Si tienen mismo cumpleaños, por fecha de registro
+        return new Date(a.createdAt) - new Date(b.createdAt);
+      })
+    : [...participantes].sort((a, b) => a.numeroAsignado - b.numeroAsignado);
+
+  const obtenerRondaActualCumpleanos = (tanda) => {
+    // Si no es cumpleañera, retornar null
+    if (tanda.frecuencia !== 'cumpleaños' || !tanda.participantes || tanda.participantes.length === 0) {
+      return null;
+    }
+
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    
+    // Ordenar participantes por número asignado
+    const participantesOrdenados = [...tanda.participantes].sort((a, b) => a.numeroAsignado - b.numeroAsignado);
+    
+    // Encontrar el número actual (el que ya pasó su cumpleaños o es hoy)
+    let numeroActual = null;
+    
+    for (const p of participantesOrdenados) {
+      if (p.fechaCumpleaños) {
+        const fechaCumple = new Date(p.fechaCumpleaños + 'T00:00:00');
+        fechaCumple.setHours(0, 0, 0, 0);
+        
+        if (fechaCumple <= hoy) {
+          numeroActual = p.numeroAsignado;
+        } else {
+          break; // Ya encontramos el último que cumplió
+        }
+      }
+    }
+    
+    return numeroActual;
+  };
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <Users className="w-7 h-7" />
-            Participantes
-          </h2>
-          <p className="text-gray-600 mt-1 text-xs">
-            {participantes.length} de {tandaData.totalRondas} participantes registrados
-          </p>
+      {/* Mensaje cuando cupo está completo
+      {esCumpleañera && participantes.length >= tandaData.totalRondas && (
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+              <CheckCircle className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <p className="font-bold text-green-800">¡Tanda Completa! 🎉</p>
+              <p className="text-sm text-green-700">
+                Ya se han registrado todos los {tandaData.totalRondas} participantes
+              </p>
+            </div>
+          </div>
         </div>
-        {/* Botón Agregar - Solo este en el header */}
-        <button
-          onClick={() => openModal()}
-          disabled={disponibles.length === 0}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Agregar Participante</span>
-        </button>
+      )}*/}
+      
+      {/* Header con navegación - AJUSTADO */}
+      <div className="bg-white rounded-2xl shadow-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-4">
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Volver"
+              >
+                <ArrowLeft className="w-5 h-5 text-gray-600" />
+              </button>
+            )}
+            <div>
+              <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                {esCumpleañera ? <Gift className="w-7 h-7 text-blue-600" /> : <Users className="w-7 h-7 text-blue-600" />}
+                Participantes
+                {esCumpleañera && <span className="text-lg">🎂</span>}
+              </h2>
+              <p className="text-sm text-gray-600 mt-1">
+                {tandaData.nombre} • {participantes.length} de {tandaData.totalRondas} registrados
+                {esCumpleañera && <span className="ml-2 text-blue-600 font-semibold">• Tanda Cumpleañera</span>}
+              </p>
+            </div>
+          </div>
+          
+          {/* Botón Agregar - DESHABILITADO cuando cupo completo */}
+          <button
+            onClick={() => openModal()}
+            disabled={participantes.length >= tandaData.totalRondas}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-blue-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-500"
+          >
+            <Plus className="w-4 h-4" />
+            Agregar
+          </button>
+        </div>
+
+        {/* Barra de progreso */}
+        <div className="bg-gray-100 rounded-full h-3 overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-blue-500 to-blue-700 transition-all duration-500 rounded-full"
+            style={{ width: `${(participantes.length / tandaData.totalRondas) * 100}%` }}
+          ></div>
+        </div>
+        <p className="text-xs text-gray-600 mt-2 text-right">
+          {Math.round((participantes.length / tandaData.totalRondas) * 100)}% completo
+        </p>
       </div>
+
+      {/* Tabla - Desktop y Mobile */}
+<div className="overflow-x-auto">
+  <table className="w-full">
+    <thead className="bg-gray-50 border-b-2 border-gray-200">
+      <tr>
+        {/* Desktop headers */}
+        <th className="hidden md:table-cell px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase">
+          #
+        </th>
+        <th className="hidden md:table-cell px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase">
+          Participante
+        </th>
+        <th className="hidden md:table-cell px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase">
+          Contacto
+        </th>
+        {esCumpleañera && (
+          <th className="hidden md:table-cell px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase">
+            Cumpleaños
+          </th>
+        )}
+        <th className="hidden md:table-cell px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase">
+          Comentarios
+        </th>
+        <th className="hidden md:table-cell px-6 py-4 text-right text-xs font-bold text-gray-600 uppercase">
+          Acciones
+        </th>
+        
+        {/* Mobile header */}
+        <th className="md:hidden px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+          Participantes
+        </th>
+      </tr>
+    </thead>
+    <tbody className="divide-y divide-gray-200">
+      {participantesOrdenados.map((participante, index) => {
+        // 🆕 Determinar número actual según tipo de tanda
+        const numeroActualTanda = esCumpleañera 
+          ? obtenerRondaActualCumpleanos(tandaData)
+          : tandaData.rondaActual;
+        
+        const esProximo = participante.numeroAsignado === numeroActualTanda;
+        const fechaPago = calcularFechaRonda(participante.numeroAsignado, participante.fechaCumpleaños);
+        const menuEstaAbierto = menuAbierto === participante.participanteId;
+
+        // Calcular si es uno de los últimos 3 elementos
+        const esDeLosFinal = index >= participantesOrdenados.length - 3;
+
+        return (
+          <tr 
+            key={participante.participanteId}
+            className={`hover:bg-gray-50 transition-colors ${
+              esProximo ? 'bg-green-50' : ''
+            }`}
+          >
+            {/* ========== DESKTOP VIEW ========== */}
+            <td className="hidden md:table-cell px-6 py-4">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg shadow-md ${
+                esProximo 
+                  ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white' 
+                  : 'bg-gradient-to-br from-blue-600 to-blue-800 text-white'
+              }`}>
+                {participante.numeroAsignado}
+              </div>
+            </td>
+            <td className="hidden md:table-cell px-6 py-4">
+              <div className="font-semibold text-gray-800">
+                {participante.nombre}
+              </div>
+              {esProximo && (
+                <span className="inline-flex items-center gap-1 text-xs text-green-600 font-bold mt-1">
+                  ← Turno actual
+                </span>
+              )}
+              {fechaPago && (
+                <div className="text-xs text-blue-600 font-semibold mt-1">
+                  {esCumpleañera ? '🎂' : '📅'} {fechaPago.toLocaleDateString('es-MX', { 
+                    weekday: 'short', 
+                    day: 'numeric', 
+                    month: 'short',
+                    year: esCumpleañera ? undefined : 'numeric'
+                  })}
+                </div>
+              )}
+            </td>
+            <td className="hidden md:table-cell px-6 py-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Phone className="w-4 h-4" />
+                  {participante.telefono}
+                </div>
+                {participante.email && (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Mail className="w-4 h-4" />
+                    {participante.email}
+                  </div>
+                )}
+              </div>
+            </td>
+            {esCumpleañera && (
+              <td className="hidden md:table-cell px-6 py-4">
+                {participante.fechaCumpleaños ? (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Calendar className="w-4 h-4 text-blue-600" />
+                    <span className="font-semibold text-blue-600">
+                      {fechaPago.toLocaleDateString('es-MX', { 
+                        day: 'numeric', 
+                        month: 'long'
+                      })}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-xs text-gray-400 italic">No registrado</span>
+                )}
+              </td>
+            )}
+            <td className="hidden md:table-cell px-6 py-4">
+              {participante.comentarios ? (
+                <button
+                  onClick={() => abrirComentarioModal(participante)}
+                  className="flex items-center gap-2 text-sm text-gray-700 hover:text-blue-600 transition-colors max-w-xs"
+                >
+                  <FileText className="w-4 h-4 flex-shrink-0" />
+                  <span className="truncate">{participante.comentarios}</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => abrirComentarioModal(participante)}
+                  className="text-sm text-gray-400 hover:text-blue-600 transition-colors"
+                >
+                  Agregar nota...
+                </button>
+              )}
+            </td>
+            <td className="hidden md:table-cell px-6 py-4">
+              <div className="flex items-center justify-end gap-2 flex-nowrap">
+                <button
+                  onClick={() => enviarMensajePagoRealizado(participante)}
+                  className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                  title="Confirmar pago"
+                >
+                  <MessageCircle className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => enviarMensajePagoPendiente(participante)}
+                  className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                  title="Recordar pago"
+                >
+                  <MessageCircle className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => abrirComentarioModal(participante)}
+                  className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                  title="Comentarios"
+                >
+                  <MessageSquare className="w-5 h-5" />
+                </button>
+                <div className="h-6 w-px bg-gray-300 mx-1"></div>
+                <button
+                  onClick={() => openModal(participante)}
+                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Editar"
+                >
+                  <Edit className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => openDeleteModal(participante)}
+                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Eliminar"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
+            </td>
+
+            {/* ========== MOBILE VIEW ========== */}
+            <td className="md:hidden px-4 py-3">
+              <div className="flex items-start gap-3">
+                {/* Badge número */}
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm shadow-md flex-shrink-0 ${
+                  esProximo 
+                    ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white' 
+                    : 'bg-gradient-to-br from-blue-600 to-blue-800 text-white'
+                }`}>
+                  {participante.numeroAsignado}
+                </div>
+
+                {/* Info del participante */}
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-gray-800 text-sm mb-0.5">
+                    {participante.nombre}
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-gray-600 mb-1">
+                    <Phone className="w-3 h-3" />
+                    <span className="truncate">{participante.telefono}</span>
+                  </div>
+                  {esCumpleañera && participante.fechaCumpleaños && (
+                    <div className="flex items-center gap-1 text-xs text-blue-600 font-semibold mb-1">
+                      <Calendar className="w-3 h-3" />
+                      {new Date(participante.fechaCumpleaños + 'T00:00:00').toLocaleDateString('es-MX', { 
+                        day: 'numeric', 
+                        month: 'short'
+                      })}
+                    </div>
+                  )}
+                  {!esCumpleañera && fechaPago && (
+                    <div className="text-xs text-blue-600 font-semibold">
+                      📅 {fechaPago.toLocaleDateString('es-MX', { 
+                        day: 'numeric', 
+                        month: 'short'
+                      })}
+                    </div>
+                  )}
+                  {esProximo && (
+                    <span className="inline-block text-xs text-green-600 font-bold mt-1">
+                      ← Turno actual
+                    </span>
+                  )}
+                </div>
+
+                {/* Menú desplegable */}
+                <div className="relative flex-shrink-0">
+                  <button
+                    onClick={() => setMenuAbierto(menuEstaAbierto ? null : participante.participanteId)}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <MoreVertical className="w-5 h-5 text-gray-600" />
+                  </button>
+
+                  {/* Dropdown menu */}
+                  {menuEstaAbierto && (
+                    <>
+                      {/* Overlay para cerrar al hacer click fuera */}
+                      <div 
+                        className="fixed inset-0 z-10"
+                        onClick={() => setMenuAbierto(null)}
+                      ></div>
+
+                      {/* Menú con posición adaptativa */}
+                      <div 
+                        className={`absolute right-0 ${
+                          esDeLosFinal ? 'bottom-full mb-1' : 'top-full mt-1'
+                        } w-56 bg-white rounded-xl shadow-2xl border-2 border-gray-200 py-2 z-20 animate-fadeIn`}
+                      >
+                        <div className="px-3 py-2 border-b border-gray-200">
+                          <p className="text-xs font-bold text-gray-500 uppercase">Acciones</p>
+                        </div>
+
+                        {/* Mensajes - Con scroll interno */}
+                        <div className="px-2 py-1 max-h-80 overflow-y-auto">
+                          <button
+                            onClick={() => {
+                              enviarMensajePagoRealizado(participante);
+                              setMenuAbierto(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-green-50 rounded-lg transition-colors"
+                          >
+                            <MessageCircle className="w-4 h-4 text-green-600" />
+                            <div>
+                              <p className="font-semibold">Confirmar Pago</p>
+                              <p className="text-xs text-gray-500">Mensaje de pago realizado</p>
+                            </div>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              enviarMensajePagoPendiente(participante);
+                              setMenuAbierto(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-amber-50 rounded-lg transition-colors"
+                          >
+                            <MessageCircle className="w-4 h-4 text-amber-600" />
+                            <div>
+                              <p className="font-semibold">Recordar Pago</p>
+                              <p className="text-xs text-gray-500">Enviar recordatorio</p>
+                            </div>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              abrirComentarioModal(participante);
+                              setMenuAbierto(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-purple-50 rounded-lg transition-colors"
+                          >
+                            <MessageSquare className="w-4 h-4 text-purple-600" />
+                            <div>
+                              <p className="font-semibold">Comentarios</p>
+                              <p className="text-xs text-gray-500">
+                                {participante.comentarios ? 'Ver/editar notas' : 'Agregar nota'}
+                              </p>
+                            </div>
+                          </button>
+                        </div>
+
+                        <div className="h-px bg-gray-200 my-1"></div>
+
+                        {/* Gestión */}
+                        <div className="px-2 py-1">
+                          <button
+                            onClick={() => {
+                              openModal(participante);
+                              setMenuAbierto(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-blue-50 rounded-lg transition-colors"
+                          >
+                            <Edit className="w-4 h-4 text-blue-600" />
+                            <p className="font-semibold">Editar</p>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              openDeleteModal(participante);
+                              setMenuAbierto(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4 text-red-600" />
+                            <p className="font-semibold">Eliminar</p>
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </td>
+          </tr>
+        );
+      })}
+    </tbody>
+  </table>
+</div>
 
       {/* Error Global */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
-          <p className="text-red-600 text-sm">{error}</p>
+        <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-600" />
+            <p className="text-red-600 text-sm font-semibold">{error}</p>
+          </div>
         </div>
       )}
 
-      {/* Lista de Participantes */}
-      <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-        {/* Header de la tabla con botón Link de Registro */}
-        {participantes.length > 0 && (
-          <div className="bg-gradient-to-r from-purple-50 to-blue-50 border-b-2 border-purple-200 px-6 py-4">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-white rounded-lg shadow-sm">
-                  <Users className="w-5 h-5 text-purple-600" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-gray-800">
-                    Lista de Participantes
-                  </h3>
-                  <p className="text-xs text-gray-600">
-                    {disponibles.length > 0 
-                      ? `${disponibles.length} número${disponibles.length !== 1 ? 's' : ''} disponible${disponibles.length !== 1 ? 's' : ''}`
-                      : 'Tanda completa'}
-                  </p>
-                </div>
-              </div>
-              
-              {/* Botón Link de Registro - Solo visible si hay números disponibles */}
-              {disponibles.length > 0 && (
+      {/* Alerta especial para tanda cumpleañera sin participantes */}
+      {esCumpleañera && participantes.length === 0 && (
+        <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <Gift className="w-6 h-6 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-blue-900">
+              <p className="font-bold mb-2">🎂 Tanda Cumpleañera - Asignación Automática:</p>
+              <ul className="list-disc list-inside space-y-1 text-xs">
+                <li>Los números se asignan automáticamente por fecha de cumpleaños</li>
+                <li>El número 1 es para quien cumple primero en el año</li>
+                <li>Si dos personas cumplen el mismo día, se asigna por orden de registro</li>
+                <li>El calendario se genera cuando todos estén registrados</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Contenido principal - Similar al anterior pero sin mostrar disponibles */}
+      {participantes.length === 0 ? (
+        <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
+          <div className="max-w-md mx-auto">
+            <div className="p-4 bg-blue-100 rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center">
+              {esCumpleañera ? <Gift className="w-10 h-10 text-blue-600" /> : <Users className="w-10 h-10 text-blue-600" />}
+            </div>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">
+              Comienza a Agregar Participantes
+            </h3>
+            <p className="text-gray-600 mb-6">
+              {esCumpleañera 
+                ? 'Los números se asignan automáticamente por fecha de cumpleaños'
+                : 'Puedes invitar personas de dos formas diferentes'}
+            </p>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* 🆕 Link solo si hay cupo disponible */}
+              {((esCumpleañera && participantes.length < tandaData.totalRondas) || (!esCumpleañera && disponibles.length > 0)) && (
                 <button
                   onClick={async () => {
                     setShowLinkModal(true);
                     await verificarLinkVigente();
                   }}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-semibold hover:shadow-lg hover:scale-105 transition-all text-sm"
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all text-sm"
                 >
                   <LinkIcon className="w-4 h-4" />
-                  <span>Generar Link de Registro</span>
-                  <div className="ml-1 px-2 py-0.5 bg-white/20 rounded-full text-xs">
-                    {disponibles.length}
-                  </div>
+                  <span className="hidden sm:inline">Link de Registro</span>
+                  <span className="sm:hidden">Link</span>
+                  {!esCumpleañera && disponibles.length > 0 && (
+                    <div className="px-2 py-0.5 bg-white/20 rounded-full text-xs">
+                      {disponibles.length}
+                    </div>
+                  )}
+                </button>
+              )}
+              <button
+                onClick={() => openModal()}
+                disabled={esCumpleañera && participantes.length >= tandaData.totalRondas}
+                className={`p-6 bg-gradient-to-br from-blue-50 to-sky-50 border-2 border-blue-200 rounded-xl hover:border-blue-400 transition-all group disabled:opacity-50 disabled:cursor-not-allowed ${
+                  (esCumpleañera && participantes.length < tandaData.totalRondas) || !esCumpleañera ? 'sm:col-span-2' : ''
+                }`}
+              >
+                <Plus className="w-8 h-8 text-blue-600 mx-auto mb-3 group-hover:scale-110 transition-transform" />
+                <h4 className="font-bold text-gray-800 mb-2">Agregar Manual</h4>
+                <p className="text-xs text-gray-600">
+                  {esCumpleañera 
+                    ? 'Registra participantes con su fecha de cumpleaños'
+                    : 'Registra tú mismo a los participantes'}
+                </p>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+          {/* Header de tabla con botón de link */}
+          <div className="bg-gradient-to-r from-blue-50 to-sky-50 border-b-2 border-blue-200 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white rounded-lg shadow-sm">
+                  {esCumpleañera ? <Gift className="w-5 h-5 text-blue-600" /> : <Users className="w-5 h-5 text-blue-600" />}
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-800">
+                    Lista de Participantes {esCumpleañera && '🎂'}
+                  </h3>
+                  <p className="text-xs text-gray-600">
+                    {esCumpleañera 
+                      ? participantes.length < tandaData.totalRondas
+                        ? `${tandaData.totalRondas - participantes.length} lugares disponibles`
+                        : '¡Tanda completa!'
+                      : disponibles.length > 0 
+                        ? `${disponibles.length} número${disponibles.length !== 1 ? 's' : ''} disponible${disponibles.length !== 1 ? 's' : ''}`
+                        : '¡Tanda completa!'}
+                  </p>
+                </div>
+              </div>
+              
+              {/* 🆕 Link solo si hay cupo disponible */}
+              {((esCumpleañera && participantes.length < tandaData.totalRondas) || (!esCumpleañera && disponibles.length > 0)) && (
+                <button
+                  onClick={async () => {
+                    setShowLinkModal(true);
+                    await verificarLinkVigente();
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all text-sm"
+                >
+                  <LinkIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline">Link de Registro</span>
+                  <span className="sm:hidden">Link</span>
+                  {!esCumpleañera && disponibles.length > 0 && (
+                    <div className="px-2 py-0.5 bg-white/20 rounded-full text-xs">
+                      {disponibles.length}
+                    </div>
+                  )}
                 </button>
               )}
             </div>
-            
-            {/* Mensaje informativo cuando hay números disponibles */}
-            {disponibles.length > 0 && (
-              <div className="mt-3 flex items-start gap-2 bg-white/60 rounded-lg p-3">
-                <div className="p-1 bg-purple-100 rounded">
-                  <LinkIcon className="w-3 h-3 text-purple-600" />
-                </div>
-                <p className="text-xs text-gray-700">
-                  <strong>Tip:</strong> Comparte el link de registro para que los participantes se inscriban automáticamente sin necesidad de agregarlos manualmente.
-                </p>
-              </div>
-            )}
           </div>
-        )}
-        
-        {participantes.length === 0 ? (
-          <div className="text-center py-12">
-            <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-600 mb-2">
-              No hay participantes aún
-            </h3>
-            <p className="text-gray-500 mb-6">
-              Agrega participantes manualmente o genera un link de registro
-            </p>
-            
-            {/* Botones cuando no hay participantes */}
-            <div className="flex flex-col sm:flex-row gap-3 justify-center items-center max-w-md mx-auto">
-              <button
-                onClick={async () => {
-                  setShowLinkModal(true);
-                  await verificarLinkVigente();
-                }}
-                className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all text-sm"
-              >
-                <LinkIcon className="w-5 h-5" />
-                <span>Generar Link de Registro</span>
-              </button>
-              
-            </div>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b-2 border-gray-200">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    Número
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    Nombre
-                  </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    Contacto
-                  </th>
-                  <th className="px-6 py-4 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {participantes
-                  .sort((a, b) => a.numeroAsignado - b.numeroAsignado)
-                  .map((participante) => {
-                    const estadoPagos = participante.estadoPagos || { estado: 'pendiente' };
-                    const esProximo = participante.numeroAsignado === tandaData.rondaActual;
+         
+        </div>
+      )}
 
-                    return (
-                      <tr 
-                        key={participante.participanteId}
-                        className={`hover:bg-gray-50 transition-colors ${
-                          esProximo ? 'bg-green-50' : ''
-                        }`}
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg ${
-                            esProximo 
-                              ? 'bg-green-500 text-white' 
-                              : 'bg-gray-200 text-gray-700'
-                          }`}>
-                            {participante.numeroAsignado}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="font-semibold text-gray-800">
-                            {participante.nombre}
-                          </div>
-                          {esProximo && (
-                            <span className="text-xs text-green-600 font-semibold">
-                              ← Turno actual
-                            </span>
-                          )}
-                          {(() => {
-                            const fechaPago = calcularFechaPago(participante.numeroAsignado);
-                            if (fechaPago) {
-                              return (
-                                <div className="text-xs text-blue-600 font-semibold mt-1">
-                                  📅 Recibe: {fechaPago.toLocaleDateString('es-MX', { 
-                                    weekday: 'short', 
-                                    day: 'numeric', 
-                                    month: 'short',
-                                    year: 'numeric'
-                                  })}
-                                </div>
-                              );
-                            }
-                          })()}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                              <Phone className="w-4 h-4" />
-                              {participante.telefono}
-                            </div>
-                            {participante.email && (
-                              <div className="flex items-center gap-2 text-sm text-gray-600">
-                                <Mail className="w-4 h-4" />
-                                {participante.email}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            {/* Botones de WhatsApp */}
-                            <button
-                              onClick={() => enviarMensajePagoRealizado(participante)}
-                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors group relative"
-                              title="Confirmar pago realizado"
-                            >
-                              <MessageCircle className="w-5 h-5" />
-                              <span className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                                ✅ Pago realizado
-                              </span>
-                            </button>
-                            <button
-                              onClick={() => enviarMensajePagoPendiente(participante)}
-                              className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors group relative"
-                              title="Recordar pago pendiente"
-                            >
-                              <MessageCircle className="w-5 h-5" />
-                              <span className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                                📢 Recordar pago
-                              </span>
-                            </button>
-                            
-                            {/* Separador visual */}
-                            <div className="h-6 w-px bg-gray-300"></div>
-                            
-                            {/* Botones de editar y eliminar */}
-                            <button
-                              onClick={() => openModal(participante)}
-                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                              title="Editar"
-                            >
-                              <Edit className="w-5 h-5" />
-                            </button>
-                            <button
-                              onClick={() => openDeleteModal(participante)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Eliminar"
-                            >
-                              <Trash2 className="w-5 h-5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Modal */}
+      {/* Modal Agregar/Editar */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-fadeIn">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 className="text-xl font-bold text-gray-800">
-                {editingParticipante ? 'Editar Participante' : 'Agregar Participante'}
-              </h3>
-              <button
-                onClick={closeModal}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+            <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-6 text-white">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold">
+                  {editingParticipante ? 'Editar Participante' : 'Agregar Participante'}
+                  {esCumpleañera && ' 🎂'}
+                </h3>
+                <button
+                  onClick={closeModal}
+                  className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
-            {/* Form */}
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              {/* Nombre */}
               <div>
                 <label htmlFor="modal-nombre" className="block text-sm font-semibold text-gray-700 mb-2">
                   Nombre Completo *
@@ -669,13 +1304,12 @@ ${linkPublico}
                   type="text"
                   value={formData.nombre}
                   onChange={handleChange}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-orange-500 focus:outline-none transition-colors"
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
                   placeholder="Juan Pérez"
                   required
                 />
               </div>
 
-              {/* Teléfono */}
               <div>
                 <label htmlFor="modal-telefono" className="block text-sm font-semibold text-gray-700 mb-2">
                   Teléfono *
@@ -686,18 +1320,16 @@ ${linkPublico}
                   type="tel"
                   value={formData.telefono}
                   onChange={handleChange}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-orange-500 focus:outline-none transition-colors"
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
                   placeholder="5512345678"
                   pattern="[0-9]{10}"
-                  title="Ingresa un teléfono válido de 10 dígitos"
                   required
                 />
-                <p className="mt-1 text-xs text-gray-500">
-                  10 dígitos sin espacios ni guiones
+                <p className="mt-1.5 text-xs text-gray-500">
+                  10 dígitos sin espacios
                 </p>
               </div>
 
-              {/* Email */}
               <div>
                 <label htmlFor="modal-email" className="block text-sm font-semibold text-gray-700 mb-2">
                   Email (opcional)
@@ -708,63 +1340,141 @@ ${linkPublico}
                   type="email"
                   value={formData.email}
                   onChange={handleChange}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-orange-500 focus:outline-none transition-colors"
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
                   placeholder="juan@email.com"
                 />
               </div>
 
-              {/* Número Asignado */}
-              <div>
-                <label htmlFor="modal-numero" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Número Asignado *
-                </label>
-                <select
-                  id="modal-numero"
-                  name="numeroAsignado"
-                  value={formData.numeroAsignado}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-orange-500 focus:outline-none transition-colors"
-                  required
-                >
-                  {editingParticipante && (
-                    <option value={editingParticipante.numeroAsignado}>
-                      {editingParticipante.numeroAsignado} (actual)
-                    </option>
-                  )}
-                  {disponibles.map(num => (
-                    <option key={num} value={num}>
-                      Número {num}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-gray-500">
-                  {disponibles.length} números disponibles
-                </p>
-              </div>
+              {/* Campo de Fecha de Cumpleaños - SOLO para tandas cumpleañeras */}
+              {esCumpleañera && (
+                <div>
+                  <label htmlFor="modal-cumpleaños" className="block text-sm font-semibold text-gray-700 mb-2">
+                    <Calendar className="w-4 h-4 inline mr-1" />
+                    Fecha de Cumpleaños *
+                  </label>
+                  <input
+                    id="modal-cumpleaños"
+                    name="fechaCumpleaños"
+                    type="date"
+                    value={formData.fechaCumpleaños}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
+                    required
+                  />
+                  <div className="mt-2 p-3 bg-blue-50 border-2 border-blue-200 rounded-xl">
+                    <p className="text-xs text-blue-800 font-semibold flex items-start gap-2">
+                      <Gift className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                      <span>
+                        {formData.fechaCumpleaños 
+                          ? `Tu número será: ${calcularNumeroAutomatico(formData.fechaCumpleaños)} (asignado automáticamente por fecha)`
+                          : 'El número se asignará automáticamente según tu fecha de cumpleaños'}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+              )}
 
-              {/* Error */}
+              {/* Selector de números - SOLO para tandas normales en modo edición */}
+              {!esCumpleañera && editingParticipante && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Número Asignado
+                  </label>
+                  <div className="flex items-center gap-3 p-4 bg-gray-50 border-2 border-gray-200 rounded-xl">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-800 text-white rounded-xl flex items-center justify-center font-bold text-lg shadow-md">
+                      {formData.numerosAsignados[0]}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-800">Número {formData.numerosAsignados[0]}</p>
+                      <p className="text-xs text-gray-500">No se puede cambiar en edición</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Selector de números - SOLO para tandas normales en modo crear */}
+              {!esCumpleañera && !editingParticipante && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Números a Asignar *
+                  </label>
+                  
+                  <div className="mb-3 p-3 bg-blue-50 border-2 border-blue-200 rounded-xl">
+                    <p className="text-xs text-blue-800 font-semibold mb-1">
+                      📋 Hasta {Math.floor(tandaData.totalRondas * 0.5)} números
+                    </p>
+                    <p className="text-xs text-blue-700">
+                      {formData.numerosAsignados.length > 0 ? (
+                        <>✅ Seleccionados: {formData.numerosAsignados.join(', ')}</>
+                      ) : (
+                        '👆 Selecciona los números'
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-5 gap-2 max-h-64 overflow-y-auto p-2 border-2 border-gray-200 rounded-xl bg-gray-50">
+                    {disponibles.map(numero => {
+                      const seleccionado = formData.numerosAsignados.includes(numero);
+                      return (
+                        <button
+                          key={numero}
+                          type="button"
+                          onClick={() => toggleNumero(numero)}
+                          className={`aspect-square rounded-lg font-bold text-sm transition-all ${
+                            seleccionado
+                              ? 'bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-lg scale-105 ring-2 ring-blue-300'
+                              : 'bg-white border-2 border-gray-300 text-gray-700 hover:border-blue-500 hover:shadow-md hover:scale-105'
+                          }`}
+                        >
+                          {numero}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {formData.numerosAsignados.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, numerosAsignados: [] }))}
+                      className="mt-2 text-xs text-gray-600 hover:text-red-600 underline"
+                    >
+                      Limpiar selección
+                    </button>
+                  )}
+                </div>
+              )}
+
               {error && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
+                <div className="p-3 bg-red-50 border-2 border-red-200 rounded-xl flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-red-600" />
                   <p className="text-red-600 text-sm">{error}</p>
                 </div>
               )}
 
-              {/* Buttons */}
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition-colors"
+                  className="flex-1 px-6 py-3 bg-white border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 hover:border-gray-400 transition-all"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  disabled={loading || (!esCumpleañera && !editingParticipante && formData.numerosAsignados.length === 0)}
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-xl font-bold hover:shadow-lg hover:shadow-blue-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  <Save className="w-5 h-5" />
-                  {loading ? 'Guardando...' : 'Guardar'}
+                  {loading ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-5 h-5" />
+                      {editingParticipante ? 'Actualizar' : 'Guardar'}
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -772,218 +1482,419 @@ ${linkPublico}
         </div>
       )}
 
-      {/* Modal de Confirmación de Eliminación */}
+      {/* Modal Eliminar */}
       {showDeleteModal && participanteAEliminar && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fadeIn">
-            {/* Header del modal */}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-3 bg-red-100 rounded-xl">
-                <Trash2 className="w-8 h-8 text-red-600" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-gray-800">Eliminar Participante</h2>
-                <p className="text-sm text-gray-600">Esta acción no se puede deshacer</p>
-              </div>
-            </div>
-
-            {/* Información del participante */}
-            <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-xl">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-rose-500 text-white rounded-lg flex items-center justify-center font-bold">
-                  {participanteAEliminar.numeroAsignado}
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="bg-gradient-to-r from-red-500 to-red-600 p-6 text-white">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-white/20 rounded-xl">
+                  <Trash2 className="w-8 h-8" />
                 </div>
                 <div>
-                  <p className="font-bold text-gray-800">{participanteAEliminar.nombre}</p>
-                  <p className="text-sm text-gray-600">{participanteAEliminar.telefono}</p>
+                  <h3 className="text-xl font-bold">Eliminar Participante</h3>
+                  <p className="text-sm opacity-90">Acción irreversible</p>
                 </div>
               </div>
             </div>
 
-            {/* Advertencia */}
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
-              <p className="text-sm text-red-800 font-semibold mb-2">
-                ⚠️ Al eliminar este participante:
-              </p>
-              <ul className="text-sm text-red-700 space-y-1 ml-4 list-disc">
-                <li>Se liberará el número {participanteAEliminar.numeroAsignado}</li>
-                <li>Se eliminarán sus registros de pagos</li>
-                <li>No podrá recibir notificaciones</li>
-              </ul>
-            </div>
-
-            {/* Error en el modal */}
-            {error && (
-              <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded-xl">
-                <p className="text-sm text-red-800">{error}</p>
+            <div className="p-6">
+              <div className="mb-4 p-4 bg-gray-50 border-2 border-gray-200 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-800 text-white rounded-lg flex items-center justify-center font-bold">
+                    {participanteAEliminar.numeroAsignado}
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-800">{participanteAEliminar.nombre}</p>
+                    <p className="text-sm text-gray-600">{participanteAEliminar.telefono}</p>
+                  </div>
+                </div>
               </div>
-            )}
 
-            {/* Botones */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowDeleteModal(false);
-                  setParticipanteAEliminar(null);
-                  setError(null);
-                }}
-                disabled={loading}
-                className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-xl font-semibold transition-all disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={loading}
-                className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    Eliminando...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-5 h-5" />
-                    Eliminar
-                  </>
-                )}
-              </button>
+              <div className="mb-6 p-4 bg-red-50 border-2 border-red-200 rounded-xl">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-red-800">
+                    <p className="font-semibold mb-2">Advertencia:</p>
+                    <ul className="list-disc list-inside space-y-1 text-xs">
+                      <li>Se liberará el número {participanteAEliminar.numeroAsignado}</li>
+                      <li>Se eliminarán registros de pagos</li>
+                      <li>No recibirá más notificaciones</li>
+                      {esCumpleañera && <li>Se recalcularán los números de los demás participantes</li>}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {error && (
+                <div className="mb-4 p-3 bg-red-100 border-2 border-red-300 rounded-xl">
+                  <p className="text-sm text-red-800">{error}</p>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setParticipanteAEliminar(null);
+                    setError(null);
+                  }}
+                  disabled={loading}
+                  className="flex-1 px-6 py-3 bg-white border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition-all disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={loading}
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-bold hover:shadow-lg hover:shadow-red-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Eliminando...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-5 h-5" />
+                      Eliminar
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal de Link de Registro */}
-      {showLinkModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-3 z-50">
-          <div className="bg-white rounded-2xl w-full max-w-sm sm:max-w-md p-4 sm:p-5 animate-fadeIn max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-3 sm:mb-4">
-              <h3 className="text-base sm:text-lg font-bold text-gray-800">Link de Registro</h3>
-              <button
-                onClick={() => {
-                  setShowLinkModal(false);
-                  setLinkRegistro(null);
-                  setLinkCopiado(false);
-                }}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+      {/* Modal Vista Previa Mensaje WhatsApp */}
+      {showMensajeModal && participanteSeleccionado && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className={`p-6 text-white ${
+              tipoMensaje === 'realizado' 
+                ? 'bg-gradient-to-r from-green-500 to-emerald-600'
+                : 'bg-gradient-to-r from-amber-500 to-orange-600'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <MessageCircle className="w-8 h-8" />
+                  <div>
+                    <h3 className="text-xl font-bold">Vista Previa del Mensaje</h3>
+                    <p className="text-sm opacity-90">
+                      Para: {participanteSeleccionado.nombre}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowMensajeModal(false);
+                    setParticipanteSeleccionado(null);
+                    setMensajeTexto('');
+                    setTipoMensaje(null);
+                  }}
+                  className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
-            {!linkRegistro ? (
-              <>
-                <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
-                  Genera un link temporal para que los participantes se registren.
+            <div className="p-6">
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Mensaje:
+                </label>
+                <textarea
+                  value={mensajeTexto}
+                  onChange={(e) => setMensajeTexto(e.target.value)}
+                  rows={12}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all font-mono text-sm resize-none"
+                  placeholder="Edita el mensaje aquí..."
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  {mensajeTexto.length} caracteres
                 </p>
+              </div>
 
-                <div className="space-y-2">
-                  <button
-                    onClick={() => generarLinkRegistro(24)}
-                    disabled={loading}
-                    className="w-full py-2.5 px-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-colors disabled:opacity-50 text-sm"
-                  >
-                    {loading ? 'Generando...' : '⏰ Válido por 24 horas'}
-                  </button>
-
-                  <button
-                    onClick={() => generarLinkRegistro(12)}
-                    disabled={loading}
-                    className="w-full py-2.5 px-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-colors disabled:opacity-50 text-sm"
-                  >
-                    {loading ? 'Generando...' : '⏰ Válido por 12 horas'}
-                  </button>
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-4">
+                <div className="flex items-start gap-2">
+                  <Phone className="w-4 h-4 text-blue-600 mt-0.5" />
+                  <div className="text-xs text-blue-800">
+                    <p className="font-semibold mb-1">Se enviará a:</p>
+                    <p>{participanteSeleccionado.telefono}</p>
+                  </div>
                 </div>
-              </>
-            ) : (
-              <>
-                <div className="bg-green-50 border border-green-200 rounded-lg p-2.5 mb-3">
-                  <p className="text-xs font-semibold text-green-800 mb-0.5">
-                    ✅ Link generado
-                  </p>
-                  <p className="text-[10px] text-green-700">
-                    Válido por {linkRegistro.duracionHoras} horas
-                  </p>
-                </div>
+              </div>
 
-                <div className="mb-3">
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                    Link:
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={linkRegistro.url}
-                      readOnly
-                      className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg bg-gray-50 text-xs"
-                    />
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowMensajeModal(false);
+                    setParticipanteSeleccionado(null);
+                    setMensajeTexto('');
+                    setTipoMensaje(null);
+                  }}
+                  className="flex-1 px-6 py-3 bg-white border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmarEnvioWhatsApp}
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-bold hover:shadow-lg hover:shadow-green-500/30 transition-all flex items-center justify-center gap-2"
+                >
+                  <MessageCircle className="w-5 h-5" />
+                  Enviar por WhatsApp
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Comentarios */}
+      {showComentarioModal && participanteSeleccionado && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl">
+            <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 text-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <MessageSquare className="w-8 h-8" />
+                  <div>
+                    <h3 className="text-xl font-bold">Comentarios</h3>
+                    <p className="text-sm opacity-90">
+                      {participanteSeleccionado.nombre}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowComentarioModal(false);
+                    setParticipanteSeleccionado(null);
+                    setComentarioTexto('');
+                    setError(null);
+                  }}
+                  className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Notas y Observaciones:
+                </label>
+                <textarea
+                  value={comentarioTexto}
+                  onChange={(e) => setComentarioTexto(e.target.value)}
+                  rows={6}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all resize-none"
+                  placeholder="Ej: Cuenta BBVA 1234567890, Prefiere pagar los lunes, etc."
+                  maxLength={500}
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  {comentarioTexto.length}/500 caracteres
+                </p>
+              </div>
+
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-4">
+                <div className="flex items-start gap-2">
+                  <FileText className="w-4 h-4 text-blue-600 mt-0.5" />
+                  <div className="text-xs text-blue-800">
+                    <p className="font-semibold mb-1">Información útil:</p>
+                    <ul className="list-disc list-inside space-y-1">
+                      <li>Número de cuenta bancaria</li>
+                      <li>Preferencias de pago</li>
+                      <li>Recordatorios especiales</li>
+                      <li>Cualquier observación relevante</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {error && (
+                <div className="mb-4 p-3 bg-red-50 border-2 border-red-200 rounded-xl flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-red-600" />
+                  <p className="text-red-600 text-sm">{error}</p>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowComentarioModal(false);
+                    setParticipanteSeleccionado(null);
+                    setComentarioTexto('');
+                    setError(null);
+                  }}
+                  disabled={loading}
+                  className="flex-1 px-6 py-3 bg-white border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition-all disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={guardarComentario}
+                  disabled={loading}
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-bold hover:shadow-lg hover:shadow-purple-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-5 h-5" />
+                      Guardar
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Link de Registro */}
+      {showLinkModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl">
+            <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 text-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <LinkIcon className="w-8 h-8" />
+                  <h3 className="text-xl font-bold">
+                    Link de Registro {esCumpleañera && '🎂'}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowLinkModal(false);
+                    setLinkRegistro(null);
+                    setLinkCopiado(false);
+                  }}
+                  className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              {!linkRegistro ? (
+                <>
+                  <p className="text-sm text-gray-600 mb-4">
+                    {esCumpleañera 
+                      ? 'Genera un link temporal para invitar participantes (con registro de cumpleaños)'
+                      : 'Genera un link temporal para invitar participantes'}
+                  </p>
+
+                  <div className="space-y-3">
                     <button
-                      onClick={copiarLink}
-                      className="px-2.5 py-1.5 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors flex-shrink-0"
-                      title="Copiar"
+                      onClick={() => generarLinkRegistro(24)}
+                      disabled={loading}
+                      className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50"
                     >
-                      {linkCopiado ? (
-                        <Check className="w-4 h-4" />
-                      ) : (
-                        <Copy className="w-4 h-4" />
-                      )}
+                      {loading ? 'Generando...' : '⏰ Válido por 24 horas'}
+                    </button>
+                    <button
+                      onClick={() => generarLinkRegistro(12)}
+                      disabled={loading}
+                      className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50"
+                    >
+                      {loading ? 'Generando...' : '⏰ Válido por 12 horas'}
                     </button>
                   </div>
-                  {linkCopiado && (
-                    <p className="text-[10px] text-green-600 mt-1">¡Copiado!</p>
-                  )}
-                </div>
+                </>
+              ) : (
+                <>
+                  <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4 mb-4">
+                    <p className="text-sm font-bold text-green-800">
+                      ✅ Link generado exitosamente
+                    </p>
+                    <p className="text-xs text-green-700 mt-1">
+                      Válido por {linkRegistro.duracionHoras} horas
+                    </p>
+                  </div>
 
-                {/* Botón de WhatsApp */}
-                <button
-                  onClick={compartirWhatsApp}
-                  className="w-full py-2.5 px-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors flex items-center justify-center gap-2 mb-3 text-sm"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  Compartir por WhatsApp
-                </button>
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Link:
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={linkRegistro.url}
+                        readOnly
+                        className="flex-1 px-3 py-2 border-2 border-gray-300 rounded-lg bg-gray-50 text-sm"
+                      />
+                      <button
+                        onClick={copiarLink}
+                        className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                      >
+                        {linkCopiado ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                      </button>
+                    </div>
+                    {linkCopiado && (
+                      <p className="text-xs text-green-600 mt-2">¡Copiado al portapapeles!</p>
+                    )}
+                  </div>
 
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5">
-                  <p className="text-xs font-semibold text-blue-800 mb-1.5">
-                    📋 Instrucciones:
-                  </p>
-                  <ul className="text-[10px] text-blue-700 space-y-0.5 ml-3 list-disc">
-                    <li>Los participantes podrán registrarse</li>
-                    <li>Elegirán sus números disponibles</li>
-                    <li>Máximo 50% de números por persona</li>
-                    <li>Expira en {linkRegistro.duracionHoras} horas</li>
-                  </ul>
-                </div>
-              </>
-            )}
+                  <button
+                    onClick={compartirWhatsApp}
+                    className="w-full py-3 px-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-bold hover:shadow-lg transition-all flex items-center justify-center gap-2 mb-4"
+                  >
+                    <MessageCircle className="w-5 h-5" />
+                    Compartir por WhatsApp
+                  </button>
+
+                  <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
+                    <p className="text-xs font-semibold text-blue-800 mb-2">
+                      📋 Instrucciones:
+                    </p>
+                    <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
+                      {esCumpleañera ? (
+                        <>
+                          <li>Participantes se auto-registran</li>
+                          <li>Ingresan su fecha de cumpleaños</li>
+                          <li>El número se asigna automáticamente</li>
+                          <li>Expira en {linkRegistro.duracionHoras} horas</li>
+                        </>
+                      ) : (
+                        <>
+                          <li>Participantes se auto-registran</li>
+                          <li>Eligen sus números favoritos</li>
+                          <li>Máximo 50% de números por persona</li>
+                          <li>Expira en {linkRegistro.duracionHoras} horas</li>
+                        </>
+                      )}
+                    </ul>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
+
+      <style>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+        
+        .animate-fadeIn {
+          animation: fadeIn 0.2s ease-out;
+        }
+      `}</style>
     </div>
   );
-}
-
-// Agregar estilos para la animación del modal
-if (typeof document !== 'undefined') {
-  const style = document.createElement('style');
-  style.textContent = `
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: scale(0.95);
-      }
-      to {
-        opacity: 1;
-        transform: scale(1);
-      }
-    }
-    .animate-fadeIn {
-      animation: fadeIn 0.2s ease-out;
-    }
-  `;
-  if (!document.querySelector('style[data-modal-animations]')) {
-    style.setAttribute('data-modal-animations', 'true');
-    document.head.appendChild(style);
-  }
 }

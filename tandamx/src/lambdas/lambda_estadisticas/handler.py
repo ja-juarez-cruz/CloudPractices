@@ -86,13 +86,35 @@ def obtener_estadisticas(event, context):
                 'error': {'code': 'FORBIDDEN', 'message': 'Sin permisos'}
             })
         
+        # 🆕 DETECTAR SI ES TANDA CUMPLEAÑERA
+        es_cumpleañera = tanda.get('frecuencia') == 'cumpleaños'
+        print(f'Es tanda cumpleañera: {es_cumpleañera}')
+        
         # Obtener participantes
         participantes_result = participantes_table.query(
             KeyConditionExpression='id = :tandaId',
             ExpressionAttributeValues={':tandaId': tanda_id}
         )
         participantes = participantes_result.get('Items', [])
-        print(f'participantes: {participantes}')
+        print(f'Total participantes: {len(participantes)}')
+        
+        # 🆕 ORDENAR PARTICIPANTES SEGÚN TIPO DE TANDA
+        if es_cumpleañera:
+            # Ordenar por fecha de cumpleaños
+            def ordenar_cumpleañera(p):
+                if p.get('fechaCumpleaños'):
+                    try:
+                        fecha = datetime.fromisoformat(p['fechaCumpleaños'])
+                        fecha_registro = datetime.fromisoformat(p.get('fechaRegistro', p.get('createdAt')))
+                        return (fecha.month, fecha.day, fecha_registro.timestamp())
+                    except:
+                        return (13, 32, 0)
+                return (13, 32, 0)
+            
+            participantes.sort(key=ordenar_cumpleañera)
+        else:
+            # Ordenar por número asignado
+            participantes.sort(key=lambda p: p.get('numeroAsignado', 999))
         
         # Obtener pagos
         pagos_result = pagos_table.query(
@@ -100,7 +122,7 @@ def obtener_estadisticas(event, context):
             ExpressionAttributeValues={':tandaId': tanda_id}
         )
         pagos = pagos_result.get('Items', [])
-        print(f'pagos: {pagos}')
+        print(f'Total pagos: {len(pagos)}')
         
         # Calcular estadísticas
         total_participantes = len(participantes)
@@ -133,8 +155,14 @@ def obtener_estadisticas(event, context):
         pagos_realizados = [p for p in pagos if p.get('pagado', False)]
         total_recaudado = sum(float(p.get('monto', monto_por_ronda)) for p in pagos_realizados)
         
-        # Total esperado hasta ahora
-        total_esperado = monto_por_ronda * total_participantes * (ronda_actual - 1)
+        # 🆕 TOTAL ESPERADO SEGÚN TIPO DE TANDA
+        if es_cumpleañera:
+            # En tanda cumpleañera: cada participante da a todos los demás
+            # Total esperado = monto × (total_participantes - 1) × participantes que ya cumplieron
+            total_esperado = monto_por_ronda * total_participantes * (ronda_actual - 1)
+        else:
+            # Tanda normal
+            total_esperado = monto_por_ronda * total_participantes * (ronda_actual - 1)
         
         # Porcentaje de recaudación
         porcentaje_recaudacion = (total_recaudado / total_esperado * 100) if total_esperado > 0 else 0
@@ -142,38 +170,102 @@ def obtener_estadisticas(event, context):
         # Progreso de la tanda
         progreso_tanda = round((ronda_actual / total_rondas) * 100)
         
-        # Encontrar próximo número
-        print('Encontrar prximo número')
+        # 🆕 ENCONTRAR PRÓXIMO NÚMERO SEGÚN TIPO DE TANDA
+        print('Encontrando próximo número...')
         proximo_numero = None
-        for participante in participantes:
-            if participante['numeroAsignado'] == ronda_actual:
-                # Calcular fecha estimada (asumiendo 1 ronda por semana)                
-                fecha_inicio = datetime.fromisoformat(tanda['fechaInicio'])
-                fecha_estimada = fecha_inicio + timedelta(weeks=ronda_actual - 1)
+        
+        if es_cumpleañera:
+            # Para tanda cumpleañera: buscar el próximo cumpleaños
+            hoy = datetime.now(timezone.utc)
+            
+            # Crear lista de próximos cumpleaños
+            proximos_cumpleaños = []
+            
+            for participante in participantes:
+                if participante.get('fechaCumpleaños'):
+                    try:
+                        fecha_cumple = datetime.fromisoformat(participante['fechaCumpleaños'])
+                        
+                        # Calcular próximo cumpleaños este año
+                        cumple_este_año = fecha_cumple.replace(year=hoy.year)
+                        
+                        # Si ya pasó este año, usar el del año siguiente
+                        if cumple_este_año < hoy:
+                            cumple_este_año = cumple_este_año.replace(year=hoy.year + 1)
+                        
+                        dias_faltantes = (cumple_este_año - hoy).days
+                        
+                        proximos_cumpleaños.append({
+                            'participante': participante,
+                            'fechaCumpleaños': cumple_este_año,
+                            'diasFaltantes': dias_faltantes
+                        })
+                    except Exception as e:
+                        print(f"Error procesando cumpleaños de {participante.get('nombre')}: {e}")
+            
+            # Ordenar por días faltantes y tomar el más próximo
+            if proximos_cumpleaños:
+                proximos_cumpleaños.sort(key=lambda x: x['diasFaltantes'])
+                proximo = proximos_cumpleaños[0]
                 
                 proximo_numero = {
-                    'participanteId': participante['participanteId'],
-                    'nombre': participante['nombre'],
-                    'numeroAsignado': participante['numeroAsignado'],
-                    'fechaEstimada': fecha_estimada.strftime('%Y-%m-%d')
+                    'participanteId': proximo['participante']['participanteId'],
+                    'nombre': proximo['participante']['nombre'],
+                    'numeroAsignado': proximo['participante']['numeroAsignado'],
+                    'fechaEstimada': proximo['fechaCumpleaños'].strftime('%Y-%m-%d'),
+                    'diasFaltantes': proximo['diasFaltantes'],
+                    'esCumpleaños': True  # 🆕 Flag para identificar
                 }
-                break
+        else:
+            # Para tanda normal: buscar por número de ronda actual
+            if tanda.get('fechaInicio'):
+                try:
+                    for participante in participantes:
+                        if participante['numeroAsignado'] == ronda_actual:
+                            # Calcular fecha estimada según frecuencia
+                            fecha_inicio = datetime.fromisoformat(tanda['fechaInicio'])
+                            
+                            frecuencia = tanda.get('frecuencia', 'semanal')
+                            if frecuencia == 'semanal':
+                                fecha_estimada = fecha_inicio + timedelta(weeks=ronda_actual - 1)
+                            elif frecuencia == 'quincenal':
+                                fecha_estimada = fecha_inicio + timedelta(weeks=(ronda_actual - 1) * 2)
+                            elif frecuencia == 'mensual':
+                                # Aproximación de 30 días por mes
+                                fecha_estimada = fecha_inicio + timedelta(days=(ronda_actual - 1) * 30)
+                            else:
+                                fecha_estimada = fecha_inicio + timedelta(weeks=ronda_actual - 1)
+                            
+                            proximo_numero = {
+                                'participanteId': participante['participanteId'],
+                                'nombre': participante['nombre'],
+                                'numeroAsignado': participante['numeroAsignado'],
+                                'fechaEstimada': fecha_estimada.strftime('%Y-%m-%d'),
+                                'esCumpleaños': False
+                            }
+                            break
+                except Exception as e:
+                    print(f"Error calculando fecha estimada: {e}")
         
         # Pagos último mes (UTC aware)
         hace_un_mes = datetime.now(timezone.utc) - timedelta(days=30)
 
-        print('parse fecha pago')
+        print('Procesando pagos del último mes...')
         def parse_fecha_pago(fecha_str):
             if not fecha_str:
                 return None
-            # Convierte ISO con Z a UTC aware
-            if fecha_str.endswith('Z'):
-                fecha_str = fecha_str.replace('Z', '+00:00')
-            fecha = datetime.fromisoformat(fecha_str)
-            # Asegurar que sea aware
-            if fecha.tzinfo is None:
-                fecha = fecha.replace(tzinfo=timezone.utc)
-            return fecha
+            try:
+                # Convierte ISO con Z a UTC aware
+                if fecha_str.endswith('Z'):
+                    fecha_str = fecha_str.replace('Z', '+00:00')
+                fecha = datetime.fromisoformat(fecha_str)
+                # Asegurar que sea aware
+                if fecha.tzinfo is None:
+                    fecha = fecha.replace(tzinfo=timezone.utc)
+                return fecha
+            except Exception as e:
+                print(f"Error parseando fecha: {fecha_str}, error: {e}")
+                return None
 
         pagos_ultimo_mes = sum(
             float(p.get('monto', 0))
@@ -183,11 +275,10 @@ def obtener_estadisticas(event, context):
                 and parse_fecha_pago(p.get('fechaPago')) > hace_un_mes
             )
         )
-
         
         # Promedio por ronda
         pagos_promedio_por_ronda = total_recaudado / max(ronda_actual - 1, 1)
-        print(f'pagos promedio: {pagos_promedio_por_ronda}')
+        print(f'Pagos promedio por ronda: {pagos_promedio_por_ronda}')
         
         # Respuesta
         return response(200, {
@@ -196,6 +287,7 @@ def obtener_estadisticas(event, context):
                 'id': tanda_id,
                 'tandaId': tanda_id,
                 'nombre': tanda['nombre'],
+                'esCumpleañera': es_cumpleañera,  # 🆕 Informar tipo de tanda
                 'estadisticas': {
                     'totalParticipantes': total_participantes,
                     'participantesAlCorriente': participantes_al_corriente,

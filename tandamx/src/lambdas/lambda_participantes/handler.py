@@ -19,6 +19,7 @@ dynamodb = boto3.resource('dynamodb')
 tandas_table = dynamodb.Table(os.environ['TANDAS_TABLE'])
 participantes_table = dynamodb.Table(os.environ['PARTICIPANTES_TABLE'])
 LINKS_TABLE = 'links_registro'
+pagos_table = 'pagos'
 
 JWT_SECRET = os.environ['JWT_SECRET']
 
@@ -57,6 +58,7 @@ def extract_user_id(event):
             return None
         token = auth_header.replace('Bearer ', '')
         payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+        print(f'payload token: {payload}')
         return payload['id']
     except:
         return None
@@ -100,32 +102,76 @@ def agregar(event, context):
                 'error': {'code': 'FORBIDDEN', 'message': result}
             })
         
-        # Validar campos requeridos
-        if not body.get('nombre') or not body.get('telefono') or not body.get('numeroAsignado'):
+        # 🆕 OBTENER INFORMACIÓN DE LA TANDA PARA VERIFICAR SI ES CUMPLEAÑERA
+        tanda = tandas_table.get_item(Key={'id': tanda_id}).get('Item')
+        if not tanda:
+            return response(404, {
+                'success': False,
+                'error': {'code': 'NOT_FOUND', 'message': 'Tanda no encontrada'}
+            })
+        
+        es_cumpleañera = tanda.get('frecuencia') == 'cumpleaños'
+        
+        # Validar campos requeridos básicos
+        if not body.get('nombre') or not body.get('telefono'):
             return response(400, {
                 'success': False,
                 'error': {
                     'code': 'MISSING_FIELDS',
-                    'message': 'Nombre, teléfono y número asignado son requeridos'
+                    'message': 'Nombre y teléfono son requeridos'
                 }
             })
         
-        # Verificar número duplicado
+        # 🆕 VALIDACIÓN ESPECÍFICA PARA TANDA CUMPLEAÑERA
+        if es_cumpleañera:
+            if not body.get('fechaCumpleaños'):
+                return response(400, {
+                    'success': False,
+                    'error': {
+                        'code': 'MISSING_BIRTHDAY',
+                        'message': 'La fecha de cumpleaños es obligatoria para tandas cumpleañeras'
+                    }
+                })
+        else:
+            # Para tandas normales, el número asignado es obligatorio
+            if not body.get('numeroAsignado'):
+                return response(400, {
+                    'success': False,
+                    'error': {
+                        'code': 'MISSING_FIELDS',
+                        'message': 'El número asignado es requerido'
+                    }
+                })
+        
+        # Obtener participantes existentes
         participantes_result = participantes_table.query(
             KeyConditionExpression='id = :tandaId',
             ExpressionAttributeValues={':tandaId': tanda_id}
         )
-        print(f'partcipantes_result: {participantes_result}')
+        print(f'participantes_result: {participantes_result}')
         
-        for p in participantes_result.get('Items', []):
-            if p['numeroAsignado'] == int(body['numeroAsignado']):
-                return response(400, {
-                    'success': False,
-                    'error': {
-                        'code': 'NUMERO_DUPLICADO',
-                        'message': f"El número {body['numeroAsignado']} ya está asignado"
-                    }
-                })
+        participantes_existentes = participantes_result.get('Items', [])
+        
+        # 🆕 CALCULAR NÚMERO ASIGNADO
+        if es_cumpleañera:
+            # Para tanda cumpleañera: calcular automáticamente
+            numero_asignado = calcular_numero_automatico_cumpleañera(
+                body['fechaCumpleaños'],
+                participantes_existentes
+            )
+        else:
+            # Para tanda normal: usar el número proporcionado y verificar duplicados
+            numero_asignado = int(body['numeroAsignado'])
+            
+            for p in participantes_existentes:
+                if p['numeroAsignado'] == numero_asignado:
+                    return response(400, {
+                        'success': False,
+                        'error': {
+                            'code': 'NUMERO_DUPLICADO',
+                            'message': f"El número {numero_asignado} ya está asignado"
+                        }
+                    })
         
         # Crear participante
         participante_id = f"part_{generate_short_id()}"
@@ -137,13 +183,23 @@ def agregar(event, context):
             'nombre': body['nombre'],
             'telefono': body['telefono'],
             'email': body.get('email', ''),
-            'numeroAsignado': int(body['numeroAsignado']),
+            'numeroAsignado': numero_asignado,
             'createdAt': timestamp,
-            'updatedAt': timestamp
+            'updatedAt': timestamp,
+            'fechaRegistro': timestamp  # 🆕 Para desempate en cumpleañeras
         }
         
+        # 🆕 Agregar fecha de cumpleaños si existe
+        if body.get('fechaCumpleaños'):
+            participante['fechaCumpleaños'] = body['fechaCumpleaños']
+        
         participantes_table.put_item(Item=participante)
-        participante['tandaId']= tanda_id
+        
+        # 🆕 SI ES CUMPLEAÑERA, RECALCULAR NÚMEROS DE TODOS LOS PARTICIPANTES
+        if es_cumpleañera:
+            recalcular_numeros_cumpleañera(tanda_id, participantes_existentes + [participante])
+        
+        participante['tandaId'] = tanda_id
         
         return response(201, {
             'success': True,
@@ -152,10 +208,136 @@ def agregar(event, context):
         
     except Exception as e:
         print(f"Error en agregar participante: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return response(500, {
             'success': False,
             'error': {'code': 'INTERNAL_SERVER_ERROR', 'message': 'Error al agregar participante'}
         })
+
+
+# 🆕 FUNCIÓN AUXILIAR: Calcular número automático para tanda cumpleañera
+def calcular_numero_automatico_cumpleañera(nueva_fecha_cumpleaños, participantes_existentes):
+    """
+    Calcula el número automático basado en la fecha de cumpleaños.
+    Ordena por mes/día de cumpleaños, y en caso de empate, por fecha de registro.
+    
+    Args:
+        nueva_fecha_cumpleaños: String con formato ISO (YYYY-MM-DD)
+        participantes_existentes: Lista de participantes actuales
+    
+    Returns:
+        int: Número asignado (1-N)
+    """
+    from datetime import datetime
+    
+    # Si no hay participantes, es el número 1
+    if not participantes_existentes:
+        return 1
+    
+    # Crear lista con info de cumpleaños
+    lista_cumpleaños = []
+    
+    # Agregar participantes existentes
+    for p in participantes_existentes:
+        if p.get('fechaCumpleaños'):
+            try:
+                fecha_cumple = datetime.fromisoformat(p['fechaCumpleaños'])
+                fecha_registro = datetime.fromisoformat(p.get('fechaRegistro', p.get('createdAt')))
+                
+                lista_cumpleaños.append({
+                    'mes': fecha_cumple.month,
+                    'dia': fecha_cumple.day,
+                    'fechaRegistro': fecha_registro,
+                    'participanteId': p['participanteId']
+                })
+            except Exception as e:
+                print(f"Error procesando fecha de participante {p.get('participanteId')}: {e}")
+                continue
+    
+    # Agregar el nuevo participante
+    try:
+        nueva_fecha = datetime.fromisoformat(nueva_fecha_cumpleaños)
+        lista_cumpleaños.append({
+            'mes': nueva_fecha.month,
+            'dia': nueva_fecha.day,
+            'fechaRegistro': datetime.utcnow(),
+            'esNuevo': True
+        })
+    except Exception as e:
+        print(f"Error procesando nueva fecha de cumpleaños: {e}")
+        return 1
+    
+    # Ordenar por mes, día y fecha de registro
+    lista_cumpleaños.sort(key=lambda x: (x['mes'], x['dia'], x['fechaRegistro']))
+    
+    # Encontrar la posición del nuevo participante
+    for i, item in enumerate(lista_cumpleaños):
+        if item.get('esNuevo'):
+            return i + 1
+    
+    # Fallback (no debería llegar aquí)
+    return len(lista_cumpleaños)
+
+
+# 🆕 FUNCIÓN AUXILIAR: Recalcular números de todos los participantes en tanda cumpleañera
+def recalcular_numeros_cumpleañera(tanda_id, todos_participantes):
+    """
+    Recalcula y actualiza los números de TODOS los participantes en una tanda cumpleañera.
+    Se ejecuta cada vez que se agrega, modifica o elimina un participante.
+    
+    Args:
+        tanda_id: ID de la tanda
+        todos_participantes: Lista con TODOS los participantes (incluyendo el recién agregado)
+    """
+    from datetime import datetime
+    
+    if not todos_participantes:
+        return
+    
+    # Filtrar solo participantes con fecha de cumpleaños
+    participantes_con_cumple = []
+    
+    for p in todos_participantes:
+        if p.get('fechaCumpleaños'):
+            try:
+                fecha_cumple = datetime.fromisoformat(p['fechaCumpleaños'])
+                fecha_registro = datetime.fromisoformat(p.get('fechaRegistro', p.get('createdAt')))
+                
+                participantes_con_cumple.append({
+                    'participanteId': p['participanteId'],
+                    'mes': fecha_cumple.month,
+                    'dia': fecha_cumple.day,
+                    'fechaRegistro': fecha_registro
+                })
+            except Exception as e:
+                print(f"Error procesando participante {p.get('participanteId')}: {e}")
+                continue
+    
+    # Ordenar por mes, día y fecha de registro
+    participantes_con_cumple.sort(key=lambda x: (x['mes'], x['dia'], x['fechaRegistro']))
+    
+    # Actualizar números en DynamoDB
+    timestamp = datetime.utcnow().isoformat()
+    
+    for i, p in enumerate(participantes_con_cumple):
+        numero_nuevo = i + 1
+        
+        try:
+            participantes_table.update_item(
+                Key={
+                    'id': tanda_id,
+                    'participanteId': p['participanteId']
+                },
+                UpdateExpression='SET numeroAsignado = :num, updatedAt = :timestamp',
+                ExpressionAttributeValues={
+                    ':num': numero_nuevo,
+                    ':timestamp': timestamp
+                }
+            )
+            print(f"✅ Actualizado participante {p['participanteId']} a número {numero_nuevo}")
+        except Exception as e:
+            print(f"❌ Error actualizando participante {p['participanteId']}: {e}")
 
 # ========================================
 # HANDLER: LISTAR PARTICIPANTES
@@ -214,38 +396,108 @@ def actualizar(event, context):
                 'error': {'code': 'FORBIDDEN', 'message': 'Sin permisos'}
             })
         
+        # 🆕 OBTENER INFORMACIÓN DE LA TANDA
+        tanda = tandas_table.get_item(Key={'id': tanda_id}).get('Item')
+        if not tanda:
+            return response(404, {
+                'success': False,
+                'error': {'code': 'NOT_FOUND', 'message': 'Tanda no encontrada'}
+            })
+        
+        es_cumpleañera = tanda.get('frecuencia') == 'cumpleaños'
+        
         # Verificar que el participante existe
-        participante = participantes_table.get_item(
+        participante_result = participantes_table.get_item(
             Key={'id': tanda_id, 'participanteId': participante_id}
         )
         
-        if not participante.get('Item'):
+        if not participante_result.get('Item'):
             return response(404, {
                 'success': False,
                 'error': {'code': 'NOT_FOUND', 'message': 'Participante no encontrado'}
             })
         
-        # Si se está cambiando el número, verificar que no esté duplicado
-        if 'numeroAsignado' in body:
-            participantes_result = participantes_table.query(
-                KeyConditionExpression='id = :tandaId',
-                ExpressionAttributeValues={':tandaId': tanda_id}
-            )
-            
-            for p in participantes_result.get('Items', []):
-                if (p['participanteId'] != participante_id and 
-                    p['numeroAsignado'] == int(body['numeroAsignado'])):
-                    return response(400, {
-                        'success': False,
-                        'error': {
-                            'code': 'NUMERO_DUPLICADO',
-                            'message': f"El número {body['numeroAsignado']} ya está asignado"
-                        }
-                    })
+        participante_actual = participante_result['Item']
         
-        # Construir expresión de actualización
+        # 🆕 VALIDACIÓN PARA TANDAS CUMPLEAÑERAS
+        if es_cumpleañera:
+            # En tandas cumpleañeras NO se puede cambiar manualmente el número
+            # EXCEPTO si viene del recálculo automático por cambio de fecha
+            if 'numeroAsignado' in body and 'fechaCumpleaños' not in body:
+                return response(400, {
+                    'success': False,
+                    'error': {
+                        'code': 'NUMERO_NO_EDITABLE',
+                        'message': 'En tandas cumpleañeras el número se asigna automáticamente por fecha de cumpleaños'
+                    }
+                })
+        else:
+            # Para tandas normales, validar número duplicado si se está cambiando
+            if 'numeroAsignado' in body:
+                participantes_result = participantes_table.query(
+                    KeyConditionExpression='id = :tandaId',
+                    ExpressionAttributeValues={':tandaId': tanda_id}
+                )
+                
+                for p in participantes_result.get('Items', []):
+                    if (p['participanteId'] != participante_id and 
+                        p['numeroAsignado'] == int(body['numeroAsignado'])):
+                        return response(400, {
+                            'success': False,
+                            'error': {
+                                'code': 'NUMERO_DUPLICADO',
+                                'message': f"El número {body['numeroAsignado']} ya está asignado"
+                            }
+                        })
+        
+        # 🆕 DETECTAR SI CAMBIÓ LA FECHA DE CUMPLEAÑOS EN TANDA CUMPLEAÑERA
+        fecha_cumpleaños_cambio = False
+        numero_nuevo_calculado = None
+        numero_anterior = participante_actual.get('numeroAsignado')
+        
+        if es_cumpleañera and 'fechaCumpleaños' in body:
+            fecha_actual = participante_actual.get('fechaCumpleaños')
+            fecha_nueva = body['fechaCumpleaños']
+            
+            if fecha_actual != fecha_nueva:
+                fecha_cumpleaños_cambio = True
+                
+                # 🆕 CALCULAR EL NUEVO NÚMERO BASADO EN LA FECHA DE CUMPLEAÑOS
+                
+                participantes_result = participantes_table.query(
+                        KeyConditionExpression='id = :tandaId',
+                        ExpressionAttributeValues={':tandaId': tanda_id}
+                    )
+                    
+                todos_participantes = participantes_result.get('Items', [])
+                    
+                # Crear lista temporal con la nueva fecha
+                participantes_temp = []
+                for p in todos_participantes:
+                    if p['participanteId'] == participante_id:
+                        # Usar la nueva fecha para este participante
+                        p_temp = p.copy()
+                        p_temp['fechaCumpleaños'] = fecha_nueva
+                        participantes_temp.append(p_temp)
+                    else:
+                        participantes_temp.append(p)
+                    
+                # Ordenar por fecha de cumpleaños
+                participantes_ordenados = sorted(
+                    participantes_temp,
+                    key=lambda x: datetime.strptime(x['fechaCumpleaños'], '%Y-%m-%d')
+                )
+                    
+                # Encontrar el nuevo número
+                for idx, p in enumerate(participantes_ordenados, 1):
+                    if p['participanteId'] == participante_id:
+                        numero_nuevo_calculado = idx
+                        break
+        
+        # 🆕 Construir expresión de actualización con ExpressionAttributeNames
         update_expression = "SET updatedAt = :now"
         expression_values = {':now': datetime.utcnow().isoformat()}
+        expression_names = {}  # Para atributos con caracteres especiales
         
         if 'nombre' in body:
             update_expression += ", nombre = :nombre"
@@ -259,27 +511,70 @@ def actualizar(event, context):
             update_expression += ", email = :email"
             expression_values[':email'] = body['email']
         
-        if 'numeroAsignado' in body:
+        # 🆕 Actualizar número si cambió la fecha de cumpleaños en tanda cumpleañera
+        if es_cumpleañera and fecha_cumpleaños_cambio and numero_nuevo_calculado:
+            update_expression += ", numeroAsignado = :numeroAsignado"
+            expression_values[':numeroAsignado'] = numero_nuevo_calculado
+        elif not es_cumpleañera and 'numeroAsignado' in body:
+            # Solo permitir cambio de número manual en tandas normales
             update_expression += ", numeroAsignado = :numeroAsignado"
             expression_values[':numeroAsignado'] = int(body['numeroAsignado'])
         
-        # Actualizar
-        participantes_table.update_item(
-            Key={'id': tanda_id, 'participanteId': participante_id},
-            UpdateExpression=update_expression,
-            ExpressionAttributeValues=expression_values
-        )
+        if 'comentarios' in body:
+            update_expression += ", comentarios = :comentarios"
+            expression_values[':comentarios'] = body['comentarios']
+        
+        # 🆕 Actualizar fecha de cumpleaños usando ExpressionAttributeNames
+        if 'fechaCumpleaños' in body:
+            update_expression += ", #fechaCumple = :fechaCumple"
+            expression_names['#fechaCumple'] = 'fechaCumpleaños'
+            expression_values[':fechaCumple'] = body['fechaCumpleaños']
+        
+        # 🆕 Actualizar participante con ExpressionAttributeNames si es necesario
+        update_params = {
+            'Key': {'id': tanda_id, 'participanteId': participante_id},
+            'UpdateExpression': update_expression,
+            'ExpressionAttributeValues': expression_values
+        }
+        
+        # Solo agregar ExpressionAttributeNames si hay atributos con caracteres especiales
+        if expression_names:
+            update_params['ExpressionAttributeNames'] = expression_names
+        
+        participantes_table.update_item(**update_params)
+        
+        # 🆕 SI CAMBIÓ EL NÚMERO, RECALCULAR TODOS LOS NÚMEROS DE LOS DEMÁS PARTICIPANTES
+        numeros_recalculados = False
+        if fecha_cumpleaños_cambio and numero_nuevo_calculado != numero_anterior:
+            print(f"📅 Número cambió de {numero_anterior} a {numero_nuevo_calculado}, recalculando todos los números...")
+            numeros_recalculados = True
+            
+            # Obtener todos los participantes actualizados (incluye el que acabamos de actualizar)
+            participantes_result = participantes_table.query(
+                KeyConditionExpression='id = :tandaId',
+                ExpressionAttributeValues={':tandaId': tanda_id}
+            )
+            
+            todos_participantes = participantes_result.get('Items', [])
+            recalcular_numeros_cumpleañera(tanda_id, todos_participantes)
+        elif fecha_cumpleaños_cambio and numero_nuevo_calculado == numero_anterior:
+            print(f"📅 Fecha de cumpleaños cambió pero el número se mantiene en {numero_anterior}")
         
         return response(200, {
             'success': True,
             'data': {
                 'participanteId': participante_id,
-                'updatedAt': expression_values[':now']
+                'updatedAt': expression_values[':now'],
+                'numeroAnterior': numero_anterior,
+                'numeroNuevo': numero_nuevo_calculado if fecha_cumpleaños_cambio else numero_anterior,
+                'numerosRecalculados': numeros_recalculados
             }
         })
         
     except Exception as e:
         print(f"Error en actualizar participante: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return response(500, {
             'success': False,
             'error': {'code': 'INTERNAL_SERVER_ERROR', 'message': 'Error al actualizar'}
@@ -308,22 +603,122 @@ def eliminar(event, context):
                 'error': {'code': 'FORBIDDEN', 'message': 'Sin permisos'}
             })
         
+        # 🆕 OBTENER INFORMACIÓN DE LA TANDA
+        tanda = tandas_table.get_item(Key={'id': tanda_id}).get('Item')
+        if not tanda:
+            return response(404, {
+                'success': False,
+                'error': {'code': 'NOT_FOUND', 'message': 'Tanda no encontrada'}
+            })
+        
+        es_cumpleañera = tanda.get('frecuencia') == 'cumpleaños'
+        
+        # 🆕 VERIFICAR QUE EL PARTICIPANTE EXISTE
+        participante_result = participantes_table.get_item(
+            Key={'id': tanda_id, 'participanteId': participante_id}
+        )
+        
+        if not participante_result.get('Item'):
+            return response(404, {
+                'success': False,
+                'error': {'code': 'NOT_FOUND', 'message': 'Participante no encontrado'}
+            })
+        
+        # 🆕 ELIMINAR TODOS LOS PAGOS ASOCIADOS AL PARTICIPANTE
+        pagos_eliminados = eliminar_pagos_participante(tanda_id, participante_id)
+        print(f"🗑️ Eliminados {pagos_eliminados} pagos del participante {participante_id}")
+        
         # Eliminar participante
         participantes_table.delete_item(
             Key={'id': tanda_id, 'participanteId': participante_id}
         )
+        print(f"✅ Participante {participante_id} eliminado")
+        
+        # 🆕 SI ES TANDA CUMPLEAÑERA, RECALCULAR NÚMEROS DE LOS RESTANTES
+        if es_cumpleañera:
+            print(f"📅 Tanda cumpleañera detectada, recalculando números...")
+            
+            # Obtener participantes restantes
+            participantes_result = participantes_table.query(
+                KeyConditionExpression='id = :tandaId',
+                ExpressionAttributeValues={':tandaId': tanda_id}
+            )
+            
+            participantes_restantes = participantes_result.get('Items', [])
+            
+            if participantes_restantes:
+                recalcular_numeros_cumpleañera(tanda_id, participantes_restantes)
+                print(f"✅ Números recalculados para {len(participantes_restantes)} participantes restantes")
         
         return response(200, {
             'success': True,
-            'message': 'Participante eliminado exitosamente'
+            'data': {
+                'message': 'Participante eliminado exitosamente',
+                'participanteId': participante_id,
+                'pagosEliminados': pagos_eliminados,
+                'numerosRecalculados': es_cumpleañera  # 🆕 Indica si se recalcularon números
+            }
         })
         
     except Exception as e:
         print(f"Error en eliminar participante: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return response(500, {
             'success': False,
             'error': {'code': 'INTERNAL_SERVER_ERROR', 'message': 'Error al eliminar'}
         })
+
+
+# 🆕 FUNCIÓN AUXILIAR: Eliminar todos los pagos de un participante
+def eliminar_pagos_participante(tanda_id, participante_id):
+    """
+    Elimina todos los pagos asociados a un participante.
+    Los pagos tienen pagoId con formato: <participanteId>_<num_pago>
+    
+    Args:
+        tanda_id: ID de la tanda
+        participante_id: ID del participante
+    
+    Returns:
+        int: Cantidad de pagos eliminados
+    """
+    try:
+        # Consultar todos los pagos de la tanda
+        pagos_result = pagos_table.query(
+            KeyConditionExpression='id = :tandaId',
+            ExpressionAttributeValues={':tandaId': tanda_id}
+        )
+        
+        pagos = pagos_result.get('Items', [])
+        pagos_eliminados = 0
+        
+        # Filtrar y eliminar pagos que pertenecen al participante
+        for pago in pagos:
+            pago_id = pago.get('pagoId', '')
+            
+            # Verificar si el pagoId comienza con el participanteId
+            # Formato esperado: <participanteId>_<num_pago>
+            if pago_id.startswith(f"{participante_id}_"):
+                try:
+                    pagos_table.delete_item(
+                        Key={
+                            'id': tanda_id,
+                            'pagoId': pago_id
+                        }
+                    )
+                    pagos_eliminados += 1
+                    print(f"  🗑️ Pago eliminado: {pago_id}")
+                except Exception as e:
+                    print(f"  ❌ Error eliminando pago {pago_id}: {e}")
+        
+        return pagos_eliminados
+        
+    except Exception as e:
+        print(f"❌ Error en eliminar_pagos_participante: {e}")
+        import traceback
+        traceback.print_exc()
+        return 0
 
 
 # =======================================
@@ -333,14 +728,23 @@ def registro_publico_participante(event, context):
     """
     Registra participante(s) en la tanda
     
-    Body esperado:
+    Body esperado para tanda normal:
     {
         "nombre": "Juan Pérez",
         "telefono": "5512345678",
         "email": "juan@example.com",  # opcional
         "numeros": [1, 5, 12]  # máximo 50% del total
     }
+    
+    Body esperado para tanda cumpleañera:
+    {
+        "nombre": "Juan Pérez",
+        "telefono": "5512345678",
+        "email": "juan@example.com",  # opcional
+        "fechaCumpleaños": "1990-03-15"  # REQUERIDO para cumpleañeras
+    }
     """
+
     try:
         # Obtener token del path
         token = event['pathParameters']['token']
@@ -351,6 +755,7 @@ def registro_publico_participante(event, context):
         telefono = body.get('telefono', '').strip()
         email = body.get('email', '').strip()
         numeros = body.get('numeros', [])
+        fecha_cumpleaños = body.get('fechaCumpleaños', '').strip()  # 🆕
         
         # Validaciones básicas
         if not nombre or not telefono:
@@ -364,21 +769,6 @@ def registro_publico_participante(event, context):
                     'success': False,
                     'error': {
                         'message': 'Nombre y teléfono son obligatorios'
-                    }
-                })
-            }
-        
-        if not numeros or not isinstance(numeros, list):
-            return {
-                'statusCode': 400,
-                'headers': {
-                    'Access-Control-Allow-Origin': '*',
-                    'Content-Type': 'application/json'
-                },
-                'body': json.dumps({
-                    'success': False,
-                    'error': {
-                        'message': 'Debe seleccionar al menos un número'
                     }
                 })
             }
@@ -463,26 +853,80 @@ def registro_publico_participante(event, context):
         
         tanda = response['Item']
         total_rondas = int(tanda.get('totalRondas', 0))
-        max_numeros = total_rondas // 2  # 50%
         
-        # Validar cantidad de números
-        if len(numeros) > max_numeros:
-            return {
-                'statusCode': 400,
-                'headers': {
-                    'Access-Control-Allow-Origin': '*',
-                    'Content-Type': 'application/json'
-                },
-                'body': json.dumps({
-                    'success': False,
-                    'error': {
-                        'message': f'Solo puedes seleccionar hasta {max_numeros} números (50% del total)'
-                    }
-                })
-            }
+        # 🆕 DETECTAR SI ES TANDA CUMPLEAÑERA
+        es_cumpleañera = tanda.get('frecuencia') == 'cumpleaños'
         
-        # Obtener números ya ocupados
-        # Obtener números ya ocupados consultando tabla participantes
+        # 🆕 VALIDACIONES SEGÚN TIPO DE TANDA
+        if es_cumpleañera:
+            # Para tanda cumpleañera: fecha de cumpleaños es obligatoria
+            if not fecha_cumpleaños:
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Access-Control-Allow-Origin': '*',
+                        'Content-Type': 'application/json'
+                    },
+                    'body': json.dumps({
+                        'success': False,
+                        'error': {
+                            'message': 'La fecha de cumpleaños es obligatoria para tandas cumpleañeras'
+                        }
+                    })
+                }
+            
+            # Validar formato de fecha
+            try:
+                datetime.fromisoformat(fecha_cumpleaños)
+            except ValueError:
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Access-Control-Allow-Origin': '*',
+                        'Content-Type': 'application/json'
+                    },
+                    'body': json.dumps({
+                        'success': False,
+                        'error': {
+                            'message': 'Formato de fecha inválido. Use YYYY-MM-DD'
+                        }
+                    })
+                }
+        else:
+            # Para tanda normal: números son obligatorios
+            if not numeros or not isinstance(numeros, list):
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Access-Control-Allow-Origin': '*',
+                        'Content-Type': 'application/json'
+                    },
+                    'body': json.dumps({
+                        'success': False,
+                        'error': {
+                            'message': 'Debe seleccionar al menos un número'
+                        }
+                    })
+                }
+            
+            # Validar cantidad de números (50% máximo)
+            max_numeros = total_rondas // 2
+            if len(numeros) > max_numeros:
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Access-Control-Allow-Origin': '*',
+                        'Content-Type': 'application/json'
+                    },
+                    'body': json.dumps({
+                        'success': False,
+                        'error': {
+                            'message': f'Solo puedes seleccionar hasta {max_numeros} números (50% del total)'
+                        }
+                    })
+                }
+        
+        # Obtener participantes existentes
         response = participantes_table.query(            
             KeyConditionExpression='id = :tandaId',
             ExpressionAttributeValues={
@@ -491,42 +935,53 @@ def registro_publico_participante(event, context):
         )
         
         participantes_existentes = response.get('Items', [])
-        numeros_ocupados = [p.get('numeroAsignado') for p in participantes_existentes]
         
-        # Verificar que los números estén disponibles
-        for numero in numeros:
-            if numero in numeros_ocupados:
-                return {
-                    'statusCode': 400,
-                    'headers': {
-                        'Access-Control-Allow-Origin': '*',
-                        'Content-Type': 'application/json'
-                    },
-                    'body': json.dumps({
-                        'success': False,
-                        'error': {
-                            'message': f'El número {numero} ya está ocupado'
-                        }
-                    })
-                }
+        # 🆕 CALCULAR NÚMERO ASIGNADO PARA TANDA CUMPLEAÑERA
+        if es_cumpleañera:
+            numero_asignado = calcular_numero_automatico_cumpleañera(
+                fecha_cumpleaños,
+                participantes_existentes
+            )
+            numeros = [numero_asignado]  # Solo un número para cumpleañeras
+        else:
+            # Para tanda normal: validar que los números estén disponibles
+            numeros_ocupados = [p.get('numeroAsignado') for p in participantes_existentes]
             
-            if numero < 1 or numero > total_rondas:
-                return {
-                    'statusCode': 400,
-                    'headers': {
-                        'Access-Control-Allow-Origin': '*',
-                        'Content-Type': 'application/json'
-                    },
-                    'body': json.dumps({
-                        'success': False,
-                        'error': {
-                            'message': f'Número {numero} fuera de rango (1-{total_rondas})'
-                        }
-                    })
-                }
+            for numero in numeros:
+                if numero in numeros_ocupados:
+                    return {
+                        'statusCode': 400,
+                        'headers': {
+                            'Access-Control-Allow-Origin': '*',
+                            'Content-Type': 'application/json'
+                        },
+                        'body': json.dumps({
+                            'success': False,
+                            'error': {
+                                'message': f'El número {numero} ya está ocupado'
+                            }
+                        })
+                    }
+                
+                if numero < 1 or numero > total_rondas:
+                    return {
+                        'statusCode': 400,
+                        'headers': {
+                            'Access-Control-Allow-Origin': '*',
+                            'Content-Type': 'application/json'
+                        },
+                        'body': json.dumps({
+                            'success': False,
+                            'error': {
+                                'message': f'Número {numero} fuera de rango (1-{total_rondas})'
+                            }
+                        })
+                    }
         
-        #  Crear participantes en tabla participantes (uno por cada número)
+        # Crear participantes en tabla participantes (uno por cada número)
         nuevos_participantes = []
+        timestamp = datetime.utcnow().isoformat()
+        
         for numero in numeros:
             participante_id = f'part_{uuid.uuid4().hex[:12]}'
             
@@ -538,12 +993,18 @@ def registro_publico_participante(event, context):
                 'nombre': nombre,
                 'telefono': telefono,
                 'numeroAsignado': Decimal(str(numero)),
-                'createdAt': datetime.utcnow().isoformat(),
-                'registradoPorLink': True  # Marcar que fue registrado públicamente
+                'createdAt': timestamp,
+                'updatedAt': timestamp,
+                'fechaRegistro': timestamp,  # 🆕 Para desempate en cumpleañeras
+                'registradoPorLink': True
             }
             
             if email:
                 participante['email'] = email
+            
+            # 🆕 Agregar fecha de cumpleaños si existe
+            if fecha_cumpleaños:
+                participante['fechaCumpleaños'] = fecha_cumpleaños
             
             # Insertar participante en la tabla
             participantes_table.put_item(Item=participante)
@@ -552,8 +1013,35 @@ def registro_publico_participante(event, context):
                 'participanteId': participante_id,
                 'nombre': nombre,
                 'telefono': telefono,
-                'numeroAsignado': numero
+                'numeroAsignado': int(numero),
+                'fechaCumpleaños': fecha_cumpleaños if fecha_cumpleaños else None
             })
+        
+        # 🆕 SI ES TANDA CUMPLEAÑERA, RECALCULAR NÚMEROS DE TODOS
+        if es_cumpleañera:
+            # Obtener todos los participantes actualizados (incluyendo los nuevos)
+            response = participantes_table.query(            
+                KeyConditionExpression='id = :tandaId',
+                ExpressionAttributeValues={
+                    ':tandaId': link['tandaId']
+                }
+            )
+            
+            todos_participantes = response.get('Items', [])
+            recalcular_numeros_cumpleañera(link['tandaId'], todos_participantes)
+            
+            # Obtener el número actualizado del participante recién creado
+            # (puede haber cambiado después del recálculo)
+            participante_actualizado = participantes_table.get_item(
+                Key={
+                    'id': link['tandaId'],
+                    'participanteId': participante_id
+                }
+            ).get('Item')
+            
+            if participante_actualizado:
+                numero_final = int(participante_actualizado.get('numeroAsignado', numero_asignado))
+                nuevos_participantes[0]['numeroAsignado'] = numero_final
         
         return {
             'statusCode': 200,
@@ -566,13 +1054,17 @@ def registro_publico_participante(event, context):
                 'data': {
                     'participantes': nuevos_participantes,
                     'tandaId': link['tandaId'],
-                    'mensaje': f'{len(numeros)} participante(s) registrado(s) exitosamente'
+                    'mensaje': f'{len(numeros)} participante(s) registrado(s) exitosamente',
+                    'esCumpleañera': es_cumpleañera,  # 🆕 Info útil para el frontend
+                    'numeroAsignado': nuevos_participantes[0]['numeroAsignado'] if es_cumpleañera else None
                 }
             }, default=decimal_default)
         }
         
     except Exception as e:
         print(f"Error registrando participante: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return {
             'statusCode': 500,
             'headers': {

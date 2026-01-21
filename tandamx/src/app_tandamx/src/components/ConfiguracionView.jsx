@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, Save, Trash2, AlertTriangle, DollarSign, Calendar, Clock, X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Settings, Save, Trash2, AlertTriangle, DollarSign, Calendar, Clock, X, Info, Users, CreditCard, Download, Share2, Gift } from 'lucide-react';
+import html2canvas from 'html2canvas';
 
 const API_BASE_URL = 'https://9l2vrevqm1.execute-api.us-east-1.amazonaws.com/dev';
 
@@ -11,6 +12,13 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
     frecuencia: tandaData?.frecuencia || 'semanal',
     diasRecordatorio: tandaData?.diasRecordatorio || 1
   });
+
+  const fechasCalendarRef = useRef(null);
+  const [exportando, setExportando] = useState(false);
+
+  // 🆕 Detectar si es tanda cumpleañera
+  const esCumpleañera = tandaData?.frecuencia === 'cumpleaños';
+  const maxDiasPago = 5;
 
   function getTodayLocalISO() {
     const now = new Date();
@@ -30,6 +38,126 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
     });
   }
 
+  // 🆕 Función mejorada para exportar como imagen (SIN SCROLL)
+  const exportarComoImagen = async () => {
+    if (!fechasCalendarRef.current) return;
+
+    setExportando(true);
+    try {
+      // Guardar el estilo original
+      const contenedorScroll = fechasCalendarRef.current.querySelector('.scroll-container');
+      const estiloOriginal = {
+        maxHeight: contenedorScroll.style.maxHeight,
+        overflowY: contenedorScroll.style.overflowY
+      };
+
+      // Remover el scroll temporalmente para capturar todo el contenido
+      contenedorScroll.style.maxHeight = 'none';
+      contenedorScroll.style.overflowY = 'visible';
+
+      // Esperar un momento para que el DOM se actualice
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Capturar con html2canvas
+      const canvas = await html2canvas(fechasCalendarRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        logging: false,
+        useCORS: true,
+        windowWidth: fechasCalendarRef.current.scrollWidth,
+        windowHeight: fechasCalendarRef.current.scrollHeight
+      });
+
+      // Restaurar el estilo original
+      contenedorScroll.style.maxHeight = estiloOriginal.maxHeight;
+      contenedorScroll.style.overflowY = estiloOriginal.overflowY;
+
+      // Convertir a blob y descargar
+      canvas.toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `calendario-${tandaData.nombre.replace(/\s+/g, '-')}.png`;
+        link.click();
+        URL.revokeObjectURL(url);
+      });
+    } catch (error) {
+      console.error('Error exportando imagen:', error);
+      setError('Error al exportar la imagen');
+    } finally {
+      setExportando(false);
+    }
+  };
+
+  // 🆕 Función mejorada para compartir por WhatsApp (SIN SCROLL)
+  const compartirPorWhatsApp = async () => {
+    if (!fechasCalendarRef.current) return;
+
+    setExportando(true);
+    try {
+      // Guardar el estilo original
+      const contenedorScroll = fechasCalendarRef.current.querySelector('.scroll-container');
+      const estiloOriginal = {
+        maxHeight: contenedorScroll.style.maxHeight,
+        overflowY: contenedorScroll.style.overflowY
+      };
+
+      // Remover el scroll temporalmente
+      contenedorScroll.style.maxHeight = 'none';
+      contenedorScroll.style.overflowY = 'visible';
+
+      // Esperar un momento para que el DOM se actualice
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Capturar con html2canvas
+      const canvas = await html2canvas(fechasCalendarRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        logging: false,
+        useCORS: true,
+        windowWidth: fechasCalendarRef.current.scrollWidth,
+        windowHeight: fechasCalendarRef.current.scrollHeight
+      });
+
+      // Restaurar el estilo original
+      contenedorScroll.style.maxHeight = estiloOriginal.maxHeight;
+      contenedorScroll.style.overflowY = estiloOriginal.overflowY;
+
+      canvas.toBlob(async (blob) => {
+        const file = new File([blob], `calendario-${tandaData.nombre}.png`, { type: 'image/png' });
+
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+          // API Web Share (móviles modernos)
+          try {
+            await navigator.share({
+              files: [file],
+              title: `Calendario de ${tandaData.nombre}`,
+              text: esCumpleañera 
+                ? '🎂 Calendario de Cumpleaños de nuestra Tanda'
+                : '📅 Calendario de pagos de nuestra Tanda'
+            });
+          } catch (err) {
+            console.log('Compartir cancelado');
+          }
+        } else {
+          // Fallback: descargar y mostrar mensaje
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `calendario-${tandaData.nombre.replace(/\s+/g, '-')}.png`;
+          link.click();
+          URL.revokeObjectURL(url);
+          
+          alert('Imagen descargada. Ahora puedes compartirla por WhatsApp desde tu galería.');
+        }
+      });
+    } catch (error) {
+      console.error('Error compartiendo:', error);
+      setError('Error al compartir la imagen');
+    } finally {
+      setExportando(false);
+    }
+  };
   
   // Sincronizar formData cuando tandaData cambia
   useEffect(() => {
@@ -48,9 +176,7 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
   const [confirmacionTexto, setConfirmacionTexto] = useState('');
-  const [confirmacionEliminarCuenta, setConfirmacionEliminarCuenta] = useState('');
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -63,14 +189,16 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Validar que la fecha no sea menor a la actual
-    const fechaSeleccionada = new Date(formData.fechaInicio);
-    const fechaActual = new Date();
-    fechaActual.setHours(0, 0, 0, 0);
-    
-    if (fechaSeleccionada < fechaActual) {
-      setError('La fecha de inicio no puede ser anterior a la fecha actual');
-      return;
+    // 🆕 Solo validar fecha si NO es cumpleañera
+    if (!esCumpleañera) {
+      const fechaSeleccionada = new Date(formData.fechaInicio);
+      const fechaActual = new Date();
+      fechaActual.setHours(0, 0, 0, 0);
+      
+      if (fechaSeleccionada < fechaActual) {
+        setError('La fecha de inicio no puede ser anterior a la fecha actual');
+        return;
+      }
     }
     
     setLoading(true);
@@ -80,14 +208,17 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
     try {
       const token = localStorage.getItem('authToken');
       
-      // Preparar payload con fechas en formato ISO
       const payload = {
         nombre: formData.nombre,
         montoPorRonda: parseFloat(formData.montoPorRonda),
-        fechaInicio: formData.fechaInicio, // Ya está en formato YYYY-MM-DD
-        frecuencia: formData.frecuencia,
         diasRecordatorio: parseInt(formData.diasRecordatorio)
       };
+
+      // 🆕 Solo incluir fechaInicio si NO es cumpleañera
+      if (!esCumpleañera) {
+        payload.fechaInicio = formData.fechaInicio;
+        payload.frecuencia = formData.frecuencia;
+      }
       
       const response = await fetch(
         `${API_BASE_URL}/tandas/${tandaData.tandaId}`,
@@ -121,7 +252,6 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
   };
 
   const handleEliminarTanda = async () => {
-    // Validar que el usuario escribió el nombre correcto
     if (confirmacionTexto.trim() !== tandaData.nombre.trim()) {
       setError('El nombre de la tanda no coincide. Por favor, escríbelo correctamente.');
       return;
@@ -149,16 +279,11 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
       }
 
       if (data.success) {
-        // Cerrar modal
         setShowDeleteModal(false);
         setConfirmacionTexto('');
-        
-        // Mostrar éxito
         setSuccess('✅ Tanda eliminada exitosamente');
         
-        // Esperar un momento para que el usuario vea el mensaje
         setTimeout(() => {
-          // Limpiar estado y redirigir a inicio
           setTandaData(null);
           setActiveView('inicio');
           loadAdminData();
@@ -172,96 +297,52 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
     }
   };
 
-  const handleEliminarCuenta = async () => {
-    // Validar que el usuario escribió ELIMINAR
-    if (confirmacionEliminarCuenta.trim().toUpperCase() !== 'ELIMINAR') {
-      setError('Debes escribir "ELIMINAR" para confirmar la eliminación de tu cuenta.');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const token = localStorage.getItem('authToken');
-      const userId = localStorage.getItem('userId');
-      
-      const response = await fetch(
-        `${API_BASE_URL}/users/${userId}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error?.message || 'Error al eliminar cuenta');
-      }
-
-      if (data.success) {
-        // Cerrar modal
-        setShowDeleteAccountModal(false);
-        
-        // Limpiar localStorage
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('userId');
-        localStorage.removeItem('userEmail');
-        
-        // Mostrar mensaje y redirigir
-        alert('Tu cuenta ha sido eliminada permanentemente. Serás redirigido al login.');
-        
-        // Forzar recarga para ir al login
-        window.location.href = '/';
-      }
-    } catch (error) {
-      console.error('Error eliminando cuenta:', error);
-      setError(error.message || 'Error al eliminar cuenta');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   if (!tandaData) return null;
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-          <Settings className="w-7 h-7" />
-          Configuración de la Tanda
-        </h2>
-        <p className="text-gray-600 mt-1">
-          Modifica los parámetros de tu tanda
-        </p>
+    <div className="space-y-4 md:space-y-6 max-w-5xl mx-auto">
+      {/* Header Mejorado */}
+      <div className={`bg-gradient-to-r ${esCumpleañera ? 'from-pink-600 to-purple-600' : 'from-blue-600 to-blue-800'} rounded-2xl md:rounded-3xl shadow-xl p-4 md:p-6 text-white`}>
+        <div className="flex items-center gap-3 mb-2">
+          <div className="p-2 md:p-3 bg-white/20 rounded-xl backdrop-blur-sm">
+            {esCumpleañera ? <Gift className="w-6 h-6 md:w-7 md:h-7" /> : <Settings className="w-6 h-6 md:w-7 md:h-7" />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-xl md:text-2xl font-bold truncate">
+              Configuración {esCumpleañera && '🎂'}
+            </h2>
+            <p className="text-xs md:text-sm text-blue-100 truncate">{tandaData.nombre}</p>
+          </div>
+        </div>
       </div>
 
       {/* Mensajes */}
       {success && (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-          <p className="text-green-700 font-semibold">{success}</p>
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl md:rounded-2xl p-3 md:p-4 animate-fadeIn">
+          <p className="text-green-700 font-semibold text-sm md:text-base">{success}</p>
         </div>
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-          <p className="text-red-600 font-semibold">{error}</p>
+        <div className="bg-gradient-to-r from-red-50 to-rose-50 border-2 border-red-300 rounded-xl md:rounded-2xl p-3 md:p-4 animate-fadeIn">
+          <p className="text-red-600 font-semibold text-sm md:text-base">{error}</p>
         </div>
       )}
 
       {/* Formulario Principal */}
-      <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-xl p-8 space-y-6">
-        <div>
-          <h3 className="text-lg font-bold text-gray-800 mb-4">Información General</h3>
+      <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
+        {/* Información General */}
+        <div className="bg-white rounded-xl md:rounded-2xl shadow-lg border-2 border-gray-100 p-4 md:p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <div className={`p-2 ${esCumpleañera ? 'bg-pink-100' : 'bg-blue-100'} rounded-lg`}>
+              <Info className={`w-4 h-4 md:w-5 md:h-5 ${esCumpleañera ? 'text-pink-600' : 'text-blue-600'}`} />
+            </div>
+            <h3 className="text-base md:text-lg font-bold text-gray-800">Información General</h3>
+          </div>
           
           {/* Nombre */}
           <div className="mb-4">
-            <label htmlFor="config-nombre" className="block text-sm font-semibold text-gray-700 mb-2">
+            <label htmlFor="config-nombre" className="block text-xs md:text-sm font-semibold text-gray-700 mb-2">
               Nombre de la Tanda
             </label>
             <input
@@ -270,16 +351,16 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
               type="text"
               value={formData.nombre}
               onChange={handleChange}
-              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-orange-500 focus:outline-none transition-colors"
+              className="w-full px-3 md:px-4 py-2 md:py-3 text-sm md:text-base border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
               required
             />
           </div>
 
           {/* Monto y Fecha */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className={`grid grid-cols-1 ${esCumpleañera ? '' : 'md:grid-cols-2'} gap-4`}>
             <div>
-              <label htmlFor="config-monto" className="block text-sm font-semibold text-gray-700 mb-2">
-                <DollarSign className="w-4 h-4 inline mr-1" />
+              <label htmlFor="config-monto" className="block text-xs md:text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                <DollarSign className="w-3 h-3 md:w-4 md:h-4" />
                 Monto por Ronda
               </label>
               <input
@@ -290,167 +371,355 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
                 step="0.01"
                 value={formData.montoPorRonda}
                 onChange={handleChange}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-orange-500 focus:outline-none transition-colors"
+                className="w-full px-3 md:px-4 py-2 md:py-3 text-sm md:text-base border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
                 required
               />
             </div>
 
-            <div>
-              <label htmlFor="config-fecha" className="block text-sm font-semibold text-gray-700 mb-2">
-                <Calendar className="w-4 h-4 inline mr-1" />
-                Fecha de Inicio
-              </label>
-              <input
-                id="config-fecha"
-                name="fechaInicio"
-                type="date"
-                min={getTodayLocalISO()}
-                value={formData.fechaInicio}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-orange-500 focus:outline-none transition-colors"
-                required
-              />
-              {formData.fechaInicio && (
-                <p className="mt-1 text-xs text-gray-500">
-                  <strong>{formatFechaLarga(formData.fechaInicio)}</strong>
-                </p>
-              )}              
-            </div>
+            {/* 🆕 Solo mostrar fecha de inicio si NO es cumpleañera */}
+            {!esCumpleañera && (
+              <div>
+                <label htmlFor="config-fecha" className="block text-xs md:text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                  <Calendar className="w-3 h-3 md:w-4 md:h-4" />
+                  Fecha de Inicio
+                </label>
+                <input
+                  id="config-fecha"
+                  name="fechaInicio"
+                  type="date"
+                  min={getTodayLocalISO()}
+                  value={formData.fechaInicio}
+                  onChange={handleChange}
+                  className="w-full px-3 md:px-4 py-2 md:py-3 text-sm md:text-base border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
+                  required
+                />
+                {formData.fechaInicio && (
+                  <p className="mt-1 text-[10px] md:text-xs text-gray-500">
+                    <strong>{formatFechaLarga(formData.fechaInicio)}</strong>
+                  </p>
+                )}              
+              </div>
+            )}
           </div>
 
-          
-
-          {/* Fechas de Pago por Ronda */}
-          {formData.fechaInicio && formData.frecuencia && (
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-              <div className="text-sm font-semibold text-blue-800 mb-3">
-                📅 Fechas calculadas
+          {/* 🆕 CALENDARIOS CON CLASE scroll-container */}
+          {esCumpleañera ? (
+            /* CALENDARIO DE CUMPLEAÑOS */
+            <div className="mt-4 p-3 md:p-4 bg-gradient-to-br from-pink-50 to-purple-50 border-2 border-pink-200 rounded-xl" ref={fechasCalendarRef}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Gift className="w-4 h-4 text-pink-600" />
+                  <div className="text-xs md:text-sm font-semibold text-pink-800">
+                    Calendario de Cumpleaños 🎂
+                  </div>
+                </div>
+                
+                {/* Botones de exportar */}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={exportarComoImagen}
+                    disabled={exportando}
+                    className="p-2 bg-white border border-pink-300 text-pink-600 rounded-lg hover:bg-pink-50 transition-all disabled:opacity-50 flex items-center gap-1 text-xs"
+                    title="Descargar imagen"
+                  >
+                    {exportando ? (
+                      <div className="w-3 h-3 border-2 border-pink-600 border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <Download className="w-3 h-3" />
+                    )}
+                    <span className="hidden sm:inline">Descargar</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={compartirPorWhatsApp}
+                    disabled={exportando}
+                    className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all disabled:opacity-50 flex items-center gap-1 text-xs"
+                    title="Compartir por WhatsApp"
+                  >
+                    {exportando ? (
+                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <Share2 className="w-3 h-3" />
+                    )}
+                    <span className="hidden sm:inline">Compartir</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="max-h-64 overflow-y-auto space-y-2">
+              {/* 🔧 AGREGAR CLASE scroll-container */}
+              <div className="scroll-container max-h-48 md:max-h-64 overflow-y-auto space-y-2">
                 {(() => {
-                  const fechaBase = new Date(formData.fechaInicio);
-                  const rondas = [];
-                  const maxDiasPago = 7;
-
-                  function calcularFechaRonda(fechaInicial, indice, frecuencia) {
-                    const fecha = new Date(fechaInicial);
-
-                    if (frecuencia === "semanal") {
-                      if (indice===1){
-                        fecha.setDate(fecha.getDate());
-                      }
-                      else{
-                        fecha.setDate(fecha.getDate() + 7 * (indice-1));
-                      }
+                  const participantes = tandaData.participantes || [];
+                  
+                  // Ordenar por fecha de cumpleaños (mes y día)
+                  const participantesOrdenados = [...participantes]
+                    .filter(p => p.fechaCumpleaños)
+                    .sort((a, b) => {
+                      const fechaA = new Date(a.fechaCumpleaños);
+                      const fechaB = new Date(b.fechaCumpleaños);
                       
-                      //fecha.setDate(fecha.getDate()-1);
-                      return fecha;
-                    }
+                      const mesA = fechaA.getMonth();
+                      const diaA = fechaA.getDate();
+                      const mesB = fechaB.getMonth();
+                      const diaB = fechaB.getDate();
 
-                    if (frecuencia === "mensual") {
-                      fecha.setMonth(fecha.getMonth() + indice-1);
-                      return fecha;
-                    }
+                      if (mesA !== mesB) return mesA - mesB;
+                      if (diaA !== diaB) return diaA - diaB;
+                      
+                      return new Date(a.createdAt) - new Date(b.createdAt);
+                    });
 
-                    if (frecuencia === "quincenal") {
-                      indice = indice
-                      let temp = new Date(fecha);
-
-                      for (let i = 1; i <= indice; i++) {
-                        const dia = temp.getDate();
-
-                        if (dia < 15) {
-                          // Segunda quincena del mismo mes
-                          if (dia === 1 | dia === 15){
-                            temp.setDate(15);
-                          }
-                          else
-                          {temp.setDate(16);}
-                        } else {
-                          // Primera quincena del siguiente mes
-                          temp.setMonth(temp.getMonth() + 1);
-                          temp.setDate(1);
-                        }
-                      }
-                      temp.setDate(temp.getDate()-1)
-
-                        return temp;
-                    }
-
-                    return fecha;
-                  }
-
-                  for (let i = 1; i <= tandaData.totalRondas; i++) {
-                    const fechaInicioRonda = calcularFechaRonda(
-                      fechaBase,
-                      i,
-                      formData.frecuencia
-                    );
-                    fechaInicioRonda.setDate(fechaInicioRonda.getDate()+1)
-
-                    const fechaLimite = new Date(fechaInicioRonda);
-                    
-                    if (formData.frecuencia==='semanal'){
-                      fechaLimite.setDate(fechaLimite.getDate() + 6);
-                    }
-                    else{
-                      fechaLimite.setDate(fechaLimite.getDate() + maxDiasPago);
-                    }
-
-                    rondas.push(
-                      <div
-                        key={i}
-                        className={`flex justify-between items-center p-2 rounded-lg ${
-                          i % 2 === 0 ? "bg-blue-100" : "bg-white"
-                        }`}
-                      >
-                        <span className="text-xs font-medium text-blue-900">
-                          Ronda {i}
-                        </span>
-
-                        <div className="text-right">
-                          <div className="text-xs text-blue-700 font-semibold">
-                            Inicio:{" "}
-                            {fechaInicioRonda.toLocaleDateString("es-MX", {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric",
-                            })}
-                          </div>
-
-                          <div className="text-[10px] text-blue-600">
-                            Fecha pago:{" "}
-                            {fechaLimite.toLocaleDateString("es-MX", {
-                              day: "numeric",
-                              month: "short",
-                            })}
-                          </div>
-                        </div>
+                  if (participantesOrdenados.length === 0) {
+                    return (
+                      <div className="text-center py-8 text-gray-500 text-sm">
+                        No hay participantes registrados aún
                       </div>
                     );
                   }
 
-                  return rondas;
+                  return participantesOrdenados.map((participante, index) => {
+                    const fechaCumple = new Date(participante.fechaCumpleaños);
+                    const primerNombre = participante.nombre.split(' ')[0];
+                    
+                    return (
+                      <div
+                        key={participante.participanteId}
+                        className={`flex justify-between items-center p-2 rounded-lg ${
+                          index % 2 === 0 ? "bg-pink-100" : "bg-white"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 bg-gradient-to-br from-pink-500 to-purple-500 text-white rounded-lg flex items-center justify-center font-bold text-xs">
+                            {participante.numeroAsignado}
+                          </div>
+                          <span className="text-[10px] md:text-xs font-semibold text-pink-900">
+                            {primerNombre}
+                          </span>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-[10px] md:text-xs text-pink-700 font-semibold flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {fechaCumple.toLocaleDateString("es-MX", {
+                              day: "numeric",
+                              month: "long"
+                            })}
+                          </div>
+                          <div className="text-[9px] md:text-[10px] text-pink-600">
+                            Recibe: ${(tandaData.montoPorRonda * (tandaData.totalRondas - 1)).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  });
                 })()}
               </div>
 
-              <div className="mt-3 text-xs text-blue-600 border-t border-blue-300 pt-2">
-                💡 <strong>Fecha límite de pago</strong> = Fecha inicio de ronda + 7
-                días
+              <div className="mt-3 text-[10px] md:text-xs text-pink-600 border-t border-pink-300 pt-2">
+                🎁 <strong>Cada persona recibe</strong> en su cumpleaños: ${tandaData.montoPorRonda?.toLocaleString()} × {tandaData.totalRondas - 1} participantes = ${(tandaData.montoPorRonda * (tandaData.totalRondas - 1))?.toLocaleString()}
               </div>
             </div>
+          ) : (
+            /* CALENDARIO NORMAL DE RONDAS CON NOMBRES */
+            formData.fechaInicio && formData.frecuencia && (
+              <div className="mt-4 p-3 md:p-4 bg-gradient-to-br from-blue-50 to-sky-50 border-2 border-blue-200 rounded-xl" ref={fechasCalendarRef}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-blue-600" />
+                    <div className="text-xs md:text-sm font-semibold text-blue-800">
+                      Fechas calculadas
+                    </div>
+                  </div>
+                  
+                  {/* Botones de exportar */}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={exportarComoImagen}
+                      disabled={exportando}
+                      className="p-2 bg-white border border-blue-300 text-blue-600 rounded-lg hover:bg-blue-50 transition-all disabled:opacity-50 flex items-center gap-1 text-xs"
+                      title="Descargar imagen"
+                    >
+                      {exportando ? (
+                        <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <Download className="w-3 h-3" />
+                      )}
+                      <span className="hidden sm:inline">Descargar</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={compartirPorWhatsApp}
+                      disabled={exportando}
+                      className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all disabled:opacity-50 flex items-center gap-1 text-xs"
+                      title="Compartir por WhatsApp"
+                    >
+                      {exportando ? (
+                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <Share2 className="w-3 h-3" />
+                      )}
+                      <span className="hidden sm:inline">Compartir</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="scroll-container max-h-48 md:max-h-64 overflow-y-auto space-y-2">
+                  {(() => {
+                    const fechaBase = new Date(formData.fechaInicio);
+                    const rondas = [];
+                    //const maxDiasPago = 5;
+
+                    // 🆕 Crear mapa de participantes por número
+                    const participantes = tandaData.participantes || [];
+                    const participantesPorNumero = {};
+                    participantes.forEach(p => {
+                      participantesPorNumero[p.numeroAsignado] = p;
+                    });
+
+                    function ultimoDiaDelMes(fecha) {
+                      return new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0);
+                    }
+
+                    function calcularFechaRonda(fechaInicial, indice, frecuencia) {
+                      const fecha = new Date(fechaInicial);
+
+                      if (frecuencia === "semanal") {
+                        if (indice === 1) {
+                          fecha.setDate(fecha.getDate());
+                        } else {
+                          fecha.setDate(fecha.getDate() + 7 * (indice - 1));
+                        }
+                        return fecha;
+                      }
+
+                      if (frecuencia === "mensual") {
+                        fecha.setMonth(fecha.getMonth() + indice - 1);
+                        return fecha;
+                      }
+
+                      if (frecuencia === "quincenal") {
+                        let temp = new Date(fecha);
+                        let diaInicial = temp.getDate();
+                        let esFinDeMes = diaInicial > 15;
+
+                        for (let i = 1; i <= indice; i++) {
+                          if (esFinDeMes) {
+                            temp = ultimoDiaDelMes(temp);
+                          } else {
+                            temp.setDate(15);
+                          }
+
+                          if (i < indice) {
+                            if (esFinDeMes) {
+                              temp.setDate(1);
+                              temp.setMonth(temp.getMonth() + 1);
+                              temp.setDate(15);
+                            } else {
+                              temp = ultimoDiaDelMes(temp);
+                            }
+                            esFinDeMes = !esFinDeMes;
+                          }
+                        }
+                        return temp;
+                      }
+
+                      return fecha;
+                    }
+
+                    for (let i = 1; i <= tandaData.totalRondas; i++) {
+                      const fechaInicioRonda = calcularFechaRonda(fechaBase, i, formData.frecuencia);
+                      
+                      if (formData.frecuencia === 'quincenal') {
+                        fechaInicioRonda.setDate(fechaInicioRonda.getDate());
+                      } else {
+                        fechaInicioRonda.setDate(fechaInicioRonda.getDate() + 1);
+                      }
+
+                      const fechaLimite = new Date(fechaInicioRonda);
+                      
+                      if (formData.frecuencia === 'semanal') {
+                        fechaLimite.setDate(fechaLimite.getDate() + maxDiasPago);
+                      } else {
+                        fechaLimite.setDate(fechaLimite.getDate() + maxDiasPago);
+                      }
+
+                      // 🆕 Buscar participante asignado a esta ronda
+                      const participante = participantesPorNumero[i];
+                      const primerNombre = participante ? participante.nombre.split(' ')[0] : null;
+
+                      rondas.push(
+                        <div
+                          key={i}
+                          className={`flex justify-between items-center p-2 rounded-lg ${
+                            i % 2 === 0 ? "bg-blue-100" : "bg-white"
+                          }`}
+                        >
+                          {/* 🆕 Columna izquierda con número y nombre */}
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-800 text-white rounded-lg flex items-center justify-center font-bold text-xs flex-shrink-0">
+                              {i}
+                            </div>
+                            {primerNombre ? (
+                              <span className="text-[10px] md:text-xs font-semibold text-blue-900">
+                                {primerNombre}
+                              </span>
+                            ) : (
+                              <span className="text-[9px] md:text-[10px] text-gray-400 italic">
+                                Sin asignar
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Columna derecha con fechas */}
+                          <div className="text-right">
+                            <div className="text-[10px] md:text-xs text-blue-700 font-semibold">
+                              Inicio:{" "}
+                              {fechaInicioRonda.toLocaleDateString("es-MX", {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                              })}
+                            </div>
+
+                            <div className="text-[9px] md:text-[10px] text-blue-600">
+                              Fecha límite de pago:{" "}
+                              {fechaLimite.toLocaleDateString("es-MX", {
+                                day: "numeric",
+                                month: "short",
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return rondas;
+                  })()}
+                </div>
+
+                <div className="mt-3 text-[10px] md:text-xs text-blue-600 border-t border-blue-300 pt-2">
+                  💡 <strong>Fecha límite de pago</strong> = Fecha inicio de ronda + {maxDiasPago} días
+                </div>
+              </div>
+            )
           )}
         </div>
 
-
-        <div className="pt-6 border-t border-gray-200">
-          <h3 className="text-lg font-bold text-gray-800 mb-4">Configuración de Rondas</h3>
+        {/* Configuración de Rondas */}
+        <div className="bg-white rounded-xl md:rounded-2xl shadow-lg border-2 border-gray-100 p-4 md:p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <Users className="w-4 h-4 md:w-5 md:h-5 text-purple-600" />
+            </div>
+            <h3 className="text-base md:text-lg font-bold text-gray-800">Configuración de Rondas</h3>
+          </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Total de Rondas - Solo lectura */}
             <div>
-              <label htmlFor="config-total-rondas" className="block text-sm font-semibold text-gray-700 mb-2">
+              <label htmlFor="config-total-rondas" className="block text-xs md:text-sm font-semibold text-gray-700 mb-2">
                 Total de Rondas
               </label>
               <input
@@ -458,82 +727,103 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
                 type="text"
                 value={tandaData.totalRondas}
                 readOnly
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-600 cursor-not-allowed"
+                className="w-full px-3 md:px-4 py-2 md:py-3 text-sm md:text-base border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-600 cursor-not-allowed"
               />
-              <p className="mt-1 text-xs text-gray-500">
-                Este valor no se puede modificar después de crear la tanda
+              <p className="mt-1 text-[10px] md:text-xs text-gray-500 flex items-start gap-1">
+                <Info className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                <span>No se puede modificar después de crear la tanda</span>
               </p>
             </div>
 
             {/* Frecuencia - Solo lectura */}
             <div>
-              <label htmlFor="config-frecuencia" className="block text-sm font-semibold text-gray-700 mb-2">
-                <Clock className="w-4 h-4 inline mr-1" />
+              <label htmlFor="config-frecuencia" className="block text-xs md:text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                <Clock className="w-3 h-3 md:w-4 md:h-4" />
                 Frecuencia
               </label>
               <input
                 id="config-frecuencia"
                 type="text"
-                value={formData.frecuencia === 'semanal' ? 'Semanal (cada 7 días)' : 
-                       formData.frecuencia === 'quincenal' ? 'Quincenal (cada 15 días)' : 
-                       'Mensual (cada 30 días)'}
+                value={
+                  formData.frecuencia === 'semanal' ? 'Semanal (cada 7 días)' : 
+                  formData.frecuencia === 'quincenal' ? 'Quincenal' : 
+                  formData.frecuencia === 'cumpleaños' ? 'Por Cumpleaños 🎂' :
+                  'Mensual'
+                }
                 readOnly
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-600 cursor-not-allowed"
+                className="w-full px-3 md:px-4 py-2 md:py-3 text-sm md:text-base border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-600 cursor-not-allowed"
               />
-              <p className="mt-1 text-xs text-gray-500">
-                Este valor no se puede modificar después de crear la tanda
+              <p className="mt-1 text-[10px] md:text-xs text-gray-500 flex items-start gap-1">
+                <Info className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                <span>No se puede modificar después de crear la tanda</span>
               </p>
             </div>
           </div>
         </div>
 
-        <div className="pt-6 border-t border-gray-200">
-          <h3 className="text-lg font-bold text-gray-800 mb-4">Recordatorios</h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Días de Recordatorio */}
-            <div>
-              <label htmlFor="config-dias" className="block text-sm font-semibold text-gray-700 mb-2">
-                Días de Anticipación
-              </label>
-              <select
-                id="config-dias"
-                name="diasRecordatorio"
-                value={formData.diasRecordatorio}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-orange-500 focus:outline-none transition-colors"
-              >
-                <option value="1">1 día antes</option>
-                <option value="2">2 días antes</option>
-                <option value="3">3 días antes</option>
-                <option value="5">5 días antes</option>
-                <option value="7">7 días antes</option>
-              </select>
-              <p className="mt-1 text-xs text-gray-500">
-                Cuántos días antes enviar recordatorios de pago
-              </p>
+        {/* Recordatorios
+        <div className="bg-white rounded-xl md:rounded-2xl shadow-lg border-2 border-gray-100 p-4 md:p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 bg-orange-100 rounded-lg">
+              <Clock className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
             </div>
+            <h3 className="text-base md:text-lg font-bold text-gray-800">Recordatorios</h3>
           </div>
-        </div>
+          
+          <div>
+            <label htmlFor="config-dias" className="block text-xs md:text-sm font-semibold text-gray-700 mb-2">
+              Días de Anticipación
+            </label>
+            <select
+              id="config-dias"
+              name="diasRecordatorio"
+              value={formData.diasRecordatorio}
+              onChange={handleChange}
+              className="w-full px-3 md:px-4 py-2 md:py-3 text-sm md:text-base border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
+            >
+              <option value="1">1 día antes</option>
+              <option value="2">2 días antes</option>
+              <option value="3">3 días antes</option>
+              <option value="5">5 días antes</option>
+              <option value="7">7 días antes</option>
+            </select>
+            <p className="mt-1 text-[10px] md:text-xs text-gray-500">
+              {esCumpleañera 
+                ? 'Cuántos días antes enviar recordatorios de cumpleaños'
+                : 'Cuántos días antes enviar recordatorios de pago'}
+            </p>
+          </div>
+        </div>*/}
 
         {/* Botón Guardar */}
         <button
           type="submit"
           disabled={loading}
-          className="w-full px-6 py-4 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full px-4 md:px-6 py-3 md:py-4 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-xl font-bold hover:shadow-lg hover:shadow-blue-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm md:text-base"
         >
-          <Save className="w-5 h-5" />
-          {loading ? 'Guardando...' : 'Guardar Cambios'}
+          {loading ? (
+            <>
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              Guardando...
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4 md:w-5 md:h-5" />
+              Guardar Cambios
+            </>
+          )}
         </button>
       </form>
 
       {/* Zona de Peligro */}
-      <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
+      <div className="bg-gradient-to-br from-red-50 to-rose-50 border-2 border-red-300 rounded-xl md:rounded-2xl p-4 md:p-6">
         <div className="flex items-start gap-3 mb-4">
-          <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
-          <div>
-            <h3 className="text-lg font-bold text-red-800 mb-2">Zona de Peligro</h3>
-            <p className="text-sm text-red-700 mb-4">
+          <div className="p-2 bg-red-100 rounded-lg flex-shrink-0">
+            <AlertTriangle className="w-5 h-5 md:w-6 md:h-6 text-red-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base md:text-lg font-bold text-red-800 mb-2">Zona de Peligro</h3>
+            <p className="text-xs md:text-sm text-red-700 mb-4">
               Las acciones en esta sección son <strong>irreversibles</strong> y eliminarán todos los datos permanentemente.
             </p>
           </div>
@@ -542,14 +832,14 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
         <button
           onClick={() => setShowDeleteModal(true)}
           disabled={loading}
-          className="px-4 py-2 bg-transparent border border-red-400 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
+          className="w-full md:w-auto px-4 py-2 md:py-2.5 bg-white border-2 border-red-400 text-red-600 rounded-xl font-semibold hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm md:text-base"
         >
           <Trash2 className="w-4 h-4" />
           Eliminar Tanda
         </button>
 
-        <div className="mt-4 p-3 bg-red-100 rounded-xl">
-          <p className="text-xs text-red-800">
+        <div className="mt-4 p-3 bg-red-100 rounded-xl border border-red-200">
+          <p className="text-[10px] md:text-xs text-red-800">
             <strong>⚠️ Advertencia:</strong> Al eliminar la tanda se perderán todos los datos:
             participantes, pagos, historial y configuración. Esta acción no se puede deshacer.
           </p>
@@ -558,206 +848,130 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
 
       {/* Modal de Confirmación de Eliminación de Tanda */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-fadeIn">
-            {/* Header del modal */}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-3 bg-red-100 rounded-xl">
-                <AlertTriangle className="w-8 h-8 text-red-600" />
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto animate-scaleIn">
+            <div className="p-4 md:p-6">
+              {/* Header del modal */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-3 bg-red-100 rounded-xl flex-shrink-0">
+                  <AlertTriangle className="w-6 h-6 md:w-8 md:h-8 text-red-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-xl md:text-2xl font-bold text-gray-800">Eliminar Tanda</h2>
+                  <p className="text-xs md:text-sm text-gray-600">Esta acción no se puede deshacer</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setConfirmacionTexto('');
+                    setError(null);
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
               </div>
-              <div>
-                <h2 className="text-2xl font-bold text-gray-800">Eliminar Tanda</h2>
-                <p className="text-sm text-gray-600">Esta acción no se puede deshacer</p>
-              </div>
-            </div>
 
-            {/* Advertencia */}
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
-              <p className="text-sm text-red-800 font-semibold mb-2">
-                ⚠️ Se eliminarán permanentemente:
-              </p>
-              <p className="text-sm text-red-700">
-                La tanda, todos los participantes, todos los pagos, todas las notificaciones y la referencia en tu cuenta.
-              </p>
-            </div>
-
-            {/* Campo de confirmación */}
-            <div className="mb-6">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Para confirmar, escribe el nombre de la tanda:
-              </label>
-              <div className="mb-2 p-3 bg-gray-100 rounded-xl border border-gray-300">
-                <p className="text-base font-bold text-gray-800 text-center">
-                  {tandaData.nombre}
+              {/* Advertencia */}
+              <div className="mb-4 p-3 md:p-4 bg-red-50 border-2 border-red-200 rounded-xl">
+                <p className="text-xs md:text-sm text-red-800 font-semibold mb-2">
+                  ⚠️ Se eliminarán permanentemente:
+                </p>
+                <p className="text-xs md:text-sm text-red-700">
+                  La tanda, todos los participantes, todos los pagos, todas las notificaciones y la referencia en tu cuenta.
                 </p>
               </div>
-              <input
-                type="text"
-                value={confirmacionTexto}
-                onChange={(e) => setConfirmacionTexto(e.target.value)}
-                placeholder="Escribe el nombre aquí"
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-red-500 focus:outline-none transition-colors"
-                autoFocus
-              />
-            </div>
 
-            {/* Error en el modal */}
-            {error && (
-              <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded-xl">
-                <p className="text-sm text-red-800">{error}</p>
+              {/* Campo de confirmación */}
+              <div className="mb-4">
+                <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-2">
+                  Para confirmar, escribe el nombre de la tanda:
+                </label>
+                <div className="mb-2 p-3 bg-gray-100 rounded-xl border border-gray-300">
+                  <p className="text-sm md:text-base font-bold text-gray-800 text-center break-words">
+                    {tandaData.nombre}
+                  </p>
+                </div>
+                <input
+                  type="text"
+                  value={confirmacionTexto}
+                  onChange={(e) => setConfirmacionTexto(e.target.value)}
+                  placeholder="Escribe el nombre aquí"
+                  className="w-full px-3 md:px-4 py-2 md:py-3 text-sm md:text-base border-2 border-gray-300 rounded-xl focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200 transition-all"
+                  autoFocus
+                />
               </div>
-            )}
 
-            {/* Botones */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowDeleteModal(false);
-                  setConfirmacionTexto('');
-                  setError(null);
-                }}
-                disabled={loading}
-                className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-xl font-semibold transition-all disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleEliminarTanda}
-                disabled={loading || confirmacionTexto.trim() !== tandaData.nombre.trim()}
-                className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    Eliminando...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-5 h-5" />
-                    Eliminar Permanentemente
-                  </>
-                )}
-              </button>
+              {/* Error en el modal */}
+              {error && (
+                <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded-xl">
+                  <p className="text-xs md:text-sm text-red-800">{error}</p>
+                </div>
+              )}
+
+              {/* Botones */}
+              <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3">
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setConfirmacionTexto('');
+                    setError(null);
+                  }}
+                  disabled={loading}
+                  className="flex-1 px-4 md:px-6 py-2.5 md:py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-xl font-semibold transition-all disabled:opacity-50 text-sm md:text-base"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleEliminarTanda}
+                  disabled={loading || confirmacionTexto.trim() !== tandaData.nombre.trim()}
+                  className="flex-1 px-4 md:px-6 py-2.5 md:py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm md:text-base"
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 md:w-5 md:h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Eliminando...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
+                      Eliminar Permanentemente
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {/* Información */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-        <p className="text-sm text-blue-800">
-          <strong>Nota:</strong> Algunos campos como el "Total de Rondas" no se pueden modificar 
-          después de crear la tanda para mantener la integridad de los datos.
+      <div className="bg-gradient-to-r from-blue-50 to-sky-50 border-2 border-blue-200 rounded-xl p-3 md:p-4">
+        <p className="text-xs md:text-sm text-blue-800 flex items-start gap-2">
+          <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>
+            <strong>Nota:</strong> Algunos campos como el "Total de Rondas" y "Frecuencia" no se pueden modificar 
+            después de crear la tanda para mantener la integridad de los datos.
+          </span>
         </p>
       </div>
-
-      {/* Modal de Confirmación de Eliminación de Cuenta */}
-      {showDeleteAccountModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-fadeIn">
-            {/* Header del modal */}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-3 bg-red-100 rounded-xl">
-                <AlertTriangle className="w-10 h-10 text-red-600" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-red-800">⚠️ Eliminar Cuenta</h2>
-                <p className="text-sm text-gray-600">Acción PERMANENTE e IRREVERSIBLE</p>
-              </div>
-            </div>
-
-            {/* Advertencias */}
-            <div className="mb-6 p-4 bg-red-50 border-2 border-red-200 rounded-xl">
-              <p className="text-sm text-red-800 font-bold mb-3">
-                🚨 ESTA ACCIÓN NO SE PUEDE DESHACER
-              </p>
-              <p className="text-xs text-red-700 mb-2">
-                Se eliminarán PERMANENTEMENTE:
-              </p>
-              <ul className="text-xs text-red-700 space-y-1 ml-4 list-disc">
-                <li><strong>Tu cuenta y perfil</strong></li>
-                <li><strong>Todas tus tandas</strong> (activas e inactivas)</li>
-                <li><strong>Todos los participantes</strong> de todas tus tandas</li>
-                <li><strong>Todo el historial de pagos</strong></li>
-                <li><strong>Todas las configuraciones</strong></li>
-              </ul>
-              <p className="text-xs text-red-800 font-bold mt-3">
-                NO podrás recuperar esta información.
-              </p>
-            </div>
-
-            {/* Error */}
-            {error && (
-              <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded-xl">
-                <p className="text-sm text-red-800">{error}</p>
-              </div>
-            )}
-
-            {/* Campo de confirmación */}
-            <div className="mb-6">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Para confirmar, escribe <span className="text-red-600 font-bold">ELIMINAR</span> en mayúsculas:
-              </label>
-              <input
-                type="text"
-                value={confirmacionEliminarCuenta}
-                onChange={(e) => setConfirmacionEliminarCuenta(e.target.value)}
-                placeholder="Escribe ELIMINAR"
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent font-mono"
-                disabled={loading}
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Debe ser exactamente "ELIMINAR" en mayúsculas
-              </p>
-            </div>
-
-            {/* Botones */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowDeleteAccountModal(false);
-                  setConfirmacionEliminarCuenta('');
-                  setError(null);
-                }}
-                disabled={loading}
-                className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-xl font-semibold transition-all disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleEliminarCuenta}
-                disabled={loading || confirmacionEliminarCuenta.trim().toUpperCase() !== 'ELIMINAR'}
-                className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Eliminando...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-5 h-5" />
-                    Eliminar Cuenta
-                  </>
-                )}
-              </button>
-            </div>
-
-            <p className="text-xs text-center text-gray-500 mt-4">
-              Esta acción eliminará tu cuenta permanentemente.
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-// Agregar estilos para la animación del modal
+// Agregar estilos para las animaciones
 if (typeof document !== 'undefined') {
   const style = document.createElement('style');
   style.textContent = `
     @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+    @keyframes scaleIn {
       from {
         opacity: 0;
         transform: scale(0.95);
@@ -769,6 +983,9 @@ if (typeof document !== 'undefined') {
     }
     .animate-fadeIn {
       animation: fadeIn 0.2s ease-out;
+    }
+    .animate-scaleIn {
+      animation: scaleIn 0.2s ease-out;
     }
   `;
   if (!document.querySelector('style[data-modal-animations]')) {

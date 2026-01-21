@@ -150,24 +150,23 @@ class DynamoClient(Client):
             print(f"Error: {str(e)}")
             raise CustomError(str(e),'400',400)
             
-    def getStatus(self,event:dict)->dict:
+    def getStatus(self, event: dict) -> dict:
         """
         GET /amigo-secreto/session/{sessionId}/status
         Retorna quiénes han revelado y quiénes faltan
+        Incluye assignments y wishlists para el frontend
         """
         
         try:
             session_id = event['pathParameters']['id']
             
             # Obtener datos de session
-            
             session_data = self.table.get_item(
-                Key={
-                    'id': session_id
-                }
+                Key={'id': session_id}
             )
             print(f'session_data: {session_data}')
-            session_data = session_data.get('Item',{})
+            
+            session_data = session_data.get('Item', {})
             participants = session_data.get('participants', [])
             config = session_data.get('config', {})
             print(f'participants: {participants}')
@@ -178,20 +177,44 @@ class DynamoClient(Client):
                 KeyConditionExpression='id = :id',
                 ExpressionAttributeValues={':id': session_id}
             )
-            assignments = assignments.get('Items', [])
-            print(f'assignments: {assignments}')
+            assignments_items = assignments.get('Items', [])
+            print(f'assignments: {assignments_items}')
             
-            
-            revealed = [a['nickname'] for a in assignments if a.get('hasRevealed')]
+            # Identificar quiénes han revelado
+            revealed = [a['nickname'] for a in assignments_items if a.get('hasRevealed')]
             pending = [p for p in participants if p not in revealed]
             
-            # Extraer avatares
-            avatars = {a['nickname']: a.get('avatar', '🎁') for a in assignments}  # ← NUEVO
+            # ✅ NUEVO: Construir objeto assignments (nickname -> assignedTo)
+            assignments_dict = {}
+            for assignment in assignments_items:
+                if assignment.get('hasRevealed'):
+                    nickname = assignment['nickname']
+                    assigned_to = assignment.get('assignedTo', '')
+                    assignments_dict[nickname] = assigned_to
             
+            # ✅ NUEVO: Construir objeto wishlists (nickname -> wishlist array)
+            wishlists_dict = {}
+            for assignment in assignments_items:
+                nickname = assignment['nickname']
+                wishlist = assignment.get('wishlist', [])
+                wishlists_dict[nickname] = wishlist
+            
+            # Extraer avatares
+            avatars = {a['nickname']: a.get('avatar', '🎁') for a in assignments_items}
+            
+            # Determinar estado
             if len(pending) > 0:
                 estado = 'ACTIVE'
             else:
-                estado = 'SETUP'
+                estado = 'COMPLETED'  # Cambiado de 'SETUP' a 'COMPLETED' cuando todos revelan
+            
+            print(f'Revealed: {len(revealed)}, Pending: {len(pending)}')
+            print(f'Assignments dict: {assignments_dict}')
+            print(f'Wishlists dict keys: {list(wishlists_dict.keys())}')
+            
+            # Limpiar Decimals de DynamoDB
+            clean_config = replace_decimal(config)
+            clean_wishlists = replace_decimal(wishlists_dict)
             
             return {
                 'statusCode': 200,
@@ -207,14 +230,21 @@ class DynamoClient(Client):
                     'revealed': revealed,
                     'pending': pending,
                     'allRevealed': len(pending) == 0,
-                    'config': config,
-                    'avatars': avatars
+                    'config': clean_config,
+                    'avatars': avatars,
+                    'assignments': assignments_dict,  # ✅ NUEVO
+                    'wishlists': clean_wishlists      # ✅ NUEVO
                 })
             }
             
+        except CustomError as ce:
+            print(f"CustomError: {str(ce)}")
+            raise ce
         except Exception as e:
-            print(f"Error: {str(e)}")
-            raise CustomError(str(e),'400',400)
+            print(f"Error inesperado: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise CustomError(str(e), '500', 500)
             
     def claimNickname(self,event:dict)->dict:
         
@@ -518,11 +548,11 @@ class DynamoClient(Client):
         return assignment
     
     
-    def getSummary(self,event):
+    def getSummary(self, event):
         """
         GET /session/{sessionId}/summary
-        Solo disponible cuando todos han revelado
-        Retorna todos los participantes y sus wishlists
+        Disponible en cualquier momento - muestra el estado actual
+        Retorna todos los participantes con sus wishlists y estado de revelación
         """
         try:
             session_id = event['pathParameters']['id']
@@ -533,9 +563,11 @@ class DynamoClient(Client):
             )
             
             if 'Item' not in session:
-                raise CustomError('Sesión no encontrada','400',400)
+                raise CustomError('Sesión no encontrada', '404', 404)
             
-            participants = session['Item'].get('participants', [])
+            session_data = session['Item']
+            participants = session_data.get('participants', [])
+            config = session_data.get('config', {})
             
             # Obtener todos los assignments
             tablaAssigments = dynamodb.Table('amigo_secreto')
@@ -546,22 +578,50 @@ class DynamoClient(Client):
             
             assignments = response.get('Items', [])
             
-            # Verificar que todos hayan revelado
-            if len([a for a in assignments if a.get('hasRevealed')]) != len(participants):
-                raise CustomError('Aún hay participantes pendientes','400',400)
+            # ✅ COMENTADO: Ya no verificamos que todos hayan revelado
+            # if len([a for a in assignments if a.get('hasRevealed')]) != len(participants):
+            #     raise CustomError('Aún hay participantes pendientes','400',400)
             
-            # Crear resumen
+            # Crear resumen con información completa de cada participante
             summary = []
+            revealed_nicknames = []
+            pending_nicknames = []
+            
             for participant in participants:
-                assignment = next((a for a in assignments if a['nickname'] == participant), None)
-                summary.append({
+                # Buscar assignment del participante
+                assignment = next(
+                    (a for a in assignments if a.get('nickname') == participant), 
+                    None
+                )
+                
+                # Determinar si ha revelado
+                has_revealed = assignment is not None and assignment.get('hasRevealed', False)
+                
+                # Agregar a listas de control
+                if has_revealed:
+                    revealed_nicknames.append(participant)
+                else:
+                    pending_nicknames.append(participant)
+                
+                # Construir objeto del participante
+                participant_data = {
                     'nickname': participant,
-                    'avatar': assignment.get('avatar', '🎁') if assignment else '🎁',  # ← NUEVO
-                    'wishlist': assignment.get('wishlist', []) if assignment else []  # ← Array
-                })
-            print(f'summary: {summary}')            
-            clean_data = replace_decimal(summary)
-            print(f'summary2: {clean_data}')
+                    'avatar': assignment.get('avatar', '🎁') if assignment else '🎁',
+                    'wishlist': assignment.get('wishlist', []) if assignment else [],
+                    'hasRevealed': has_revealed
+                }
+                
+                summary.append(participant_data)
+            
+            print(f'Summary generado: {len(summary)} participantes')
+            print(f'Revelados: {len(revealed_nicknames)}, Pendientes: {len(pending_nicknames)}')
+            
+            # Limpiar Decimals de DynamoDB
+            clean_summary = replace_decimal(summary)
+            clean_config = replace_decimal(config)
+            
+            # Calcular si todos revelaron
+            all_revealed = len(revealed_nicknames) == len(participants)
             
             return {
                 'statusCode': 200,
@@ -570,12 +630,24 @@ class DynamoClient(Client):
                     "Access-Control-Allow-Headers": "*",
                     "Access-Control-Allow-Methods": "OPTIONS,GET"
                 },
-                'body': json.dumps({'success': True, 'summary': clean_data})
+                'body': json.dumps({
+                    'success': True,
+                    'summary': clean_summary,
+                    'config': clean_config,
+                    'revealed': revealed_nicknames,
+                    'pending': pending_nicknames,
+                    'allRevealed': all_revealed
+                })
             }
             
+        except CustomError as ce:
+            print(f"CustomError: {str(ce)}")
+            raise ce
         except Exception as e:
-            print(f"Error: {str(e)}")
-            raise CustomError(str(e),'400',400)
+            print(f"Error inesperado: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise CustomError(str(e), '500', 500)
             
     def updateWishlist(self,event):
         """

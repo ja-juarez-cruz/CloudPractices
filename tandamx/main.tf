@@ -753,9 +753,21 @@ resource "aws_apigatewayv2_route" "auth_register" {
   target    = "integrations/${aws_apigatewayv2_integration.auth.id}"
 }
 
+resource "aws_apigatewayv2_route" "put_auth_register" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "PUT /auth/register"
+  target    = "integrations/${aws_apigatewayv2_integration.auth.id}"
+}
+
 resource "aws_apigatewayv2_route" "auth_refresh" {
   api_id    = aws_apigatewayv2_api.main.id
   route_key = "POST /auth/refresh"
+  target    = "integrations/${aws_apigatewayv2_integration.auth.id}"
+}
+
+resource "aws_apigatewayv2_route" "delete_account" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "DELETE /auth/account"
   target    = "integrations/${aws_apigatewayv2_integration.auth.id}"
 }
 
