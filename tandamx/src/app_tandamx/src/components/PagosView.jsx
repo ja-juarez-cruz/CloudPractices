@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { CreditCard, CheckCircle, XCircle, Clock, Filter, RefreshCw, X, Save, DollarSign, Calendar, FileText, AlertCircle } from 'lucide-react';
+import { 
+  calcularRondaActual, 
+  calcularEstadoPorParticipante
+} from '../utils/tandaCalculos';
 
 const API_BASE_URL = 'https://9l2vrevqm1.execute-api.us-east-1.amazonaws.com/dev';
 
@@ -19,6 +23,10 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
     exentoPago: false
   });
 
+  // ====================================
+  // CARGAR MATRIZ DE PAGOS
+  // ====================================
+  
   const cargarMatrizPagos = useCallback(async () => {
     if (!tandaData || !tandaData.tandaId) {
       setMatrizPagos(null);
@@ -31,9 +39,7 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
       const url = `${API_BASE_URL}/tandas/${tandaData.tandaId}/pagos/matriz`;
       
       const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       
       const data = await response.json();
@@ -46,8 +52,6 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
           const pagos = participante.pagos || {};
           
           Object.keys(pagos).forEach(ronda => {
-            // Incluir TODOS los registros, tanto pagados como no pagados
-            // que tengan información relevante
             const pagoData = pagos[ronda];
             const tieneInfoRelevante = pagoData && (
               pagoData.pagado ||
@@ -89,44 +93,36 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
     }
   }, [tandaData?.tandaId, cargarMatrizPagos]);
 
-  // Validar que los pagos sean secuenciales
+  // ====================================
+  // VALIDACIONES Y GESTIÓN DE PAGOS
+  // ====================================
+  
   const puedePagarRonda = (participanteId, ronda) => {
-    if (!matrizPagos || !Array.isArray(matrizPagos)) return true;
+    if (!matrizPagos || !Array.isArray(matrizPagos) || ronda === 1) return true;
     
-    // Si es la ronda 1, siempre se puede pagar
-    if (ronda === 1) return true;
-    
-    // Verificar que todas las rondas anteriores estén pagadas
     for (let r = 1; r < ronda; r++) {
       const estaPagada = matrizPagos.some(
         p => p.participanteId === participanteId && p.ronda === r && p.pagado
       );
-      if (!estaPagada) {
-        return false;
-      }
+      if (!estaPagada) return false;
     }
     
     return true;
   };
 
-  // Manejar click/doble click
   const handleCellClick = (participanteId, ronda, estaPagado) => {
     if (clickTimeout) {
-      // Es doble click
       clearTimeout(clickTimeout);
       setClickTimeout(null);
       
       if (estaPagado) {
-        // Abrir modal de edición
         abrirModalEdicion(participanteId, ronda);
       }
     } else {
-      // Es single click
       const timeout = setTimeout(() => {
         setClickTimeout(null);
-        // Toggle pago
         togglePago(participanteId, ronda);
-      }, 250); // 250ms para detectar doble click
+      }, 250);
       
       setClickTimeout(timeout);
     }
@@ -141,11 +137,7 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
     
     const participante = tandaData.participantes.find(p => p.participanteId === participanteId);
     
-    setPagoSeleccionado({
-      participanteId,
-      ronda,
-      participante
-    });
+    setPagoSeleccionado({ participanteId, ronda, participante });
     
     setEditFormData({
       fechaPago: pago.fechaPago ? new Date(pago.fechaPago).toISOString().split('T')[0] : '',
@@ -195,7 +187,6 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
       }
 
       if (data.success) {
-        // Actualizar estado local
         setMatrizPagos(prev => {
           if (!Array.isArray(prev)) return prev;
           
@@ -237,7 +228,6 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
 
     const estaPagadoAhora = pagoActual?.pagado || false;
 
-    // Si NO está pagado y queremos pagarlo, validar secuencia
     if (!estaPagadoAhora && !puedePagarRonda(participanteId, ronda)) {
       setError(`Debe pagar las rondas anteriores primero. No se puede pagar la ronda ${ronda} sin haber pagado las anteriores.`);
       setTimeout(() => setError(null), 4000);
@@ -250,11 +240,9 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
     try {
       const token = localStorage.getItem('authToken');
 
-      // Preparar datos para el API
       let bodyData;
       
       if (estaPagadoAhora) {
-        // Si estamos desmarcando, preservar datos existentes si tiene información adicional
         const tieneInfoAdicional = pagoActual && (
           pagoActual.notas || 
           pagoActual.exentoPago || 
@@ -262,33 +250,26 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
           pagoActual.metodoPago !== (tandaData.metodoPago || 'Transferencia')
         );
 
-        if (tieneInfoAdicional) {
-          // Preservar todos los datos, solo cambiar pagado a false
-          bodyData = {
-            participanteId,
-            ronda,
-            pagado: false,
-            monto: pagoActual.monto,
-            fechaPago: pagoActual.fechaPago,
-            metodoPago: pagoActual.metodoPago,
-            notas: pagoActual.notas,
-            exentoPago: pagoActual.exentoPago
-          };
-        } else {
-          // No tiene info adicional, usar valores por defecto
-          bodyData = {
-            participanteId,
-            ronda,
-            pagado: false,
-            monto: tandaData.montoPorRonda,
-            fechaPago: new Date().toISOString(),
-            metodoPago: tandaData.metodoPago || 'Transferencia',
-            notas: '',
-            exentoPago: false
-          };
-        }
+        bodyData = tieneInfoAdicional ? {
+          participanteId,
+          ronda,
+          pagado: false,
+          monto: pagoActual.monto,
+          fechaPago: pagoActual.fechaPago,
+          metodoPago: pagoActual.metodoPago,
+          notas: pagoActual.notas,
+          exentoPago: pagoActual.exentoPago
+        } : {
+          participanteId,
+          ronda,
+          pagado: false,
+          monto: tandaData.montoPorRonda,
+          fechaPago: new Date().toISOString(),
+          metodoPago: tandaData.metodoPago || 'Transferencia',
+          notas: '',
+          exentoPago: false
+        };
       } else {
-        // Marcando como pagado por primera vez
         bodyData = {
           participanteId,
           ronda,
@@ -324,42 +305,31 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
           if (!Array.isArray(prev)) prev = [];
           
           if (estaPagadoAhora) {
-            // Actualizar el registro existente en lugar de eliminarlo
             return prev.map(p => {
               if (p.participanteId === participanteId && p.ronda === ronda) {
-                return {
-                  ...p,
-                  pagado: false,
-                  // Los demás campos se preservan del estado actual
-                };
+                return { ...p, pagado: false };
               }
               return p;
             });
           } else {
-            // Verificar si ya existe un registro (podría estar desmarcado)
             const existeRegistro = prev.find(
               p => p.participanteId === participanteId && p.ronda === ronda
             );
             
             if (existeRegistro) {
-              // Actualizar registro existente
               return prev.map(p => {
                 if (p.participanteId === participanteId && p.ronda === ronda) {
                   return {
                     ...p,
                     pagado: true,
-                    // Si no tiene fecha, asignar la actual
                     fechaPago: p.fechaPago || new Date().toISOString(),
-                    // Si no tiene método de pago, usar el de la tanda
                     metodoPago: p.metodoPago || tandaData.metodoPago || 'Transferencia',
-                    // Si no tiene monto, usar el de la tanda
                     monto: p.monto || tandaData.montoPorRonda,
                   };
                 }
                 return p;
               });
             } else {
-              // Crear nuevo registro
               return [...prev, { 
                 participanteId, 
                 ronda, 
@@ -382,6 +352,10 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
     }
   };
 
+  // ====================================
+  // RENDER
+  // ====================================
+  
   if (!tandaData) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -402,47 +376,18 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
 
   const participantes = tandaData.participantes || [];
   const rondas = Array.from({ length: tandaData.totalRondas }, (_, i) => i + 1);
+  const rondaActual = calcularRondaActual(tandaData);
 
-  const calcularEstadoPorParticipante = (participanteId) => {
-    if (!matrizPagos || !Array.isArray(matrizPagos)) {
-      return { estado: 'pendiente', pagosAdelantados: 0 };
-    }
-    
-    const pagos = matrizPagos.filter(
-      p => p.participanteId === participanteId && p.pagado
-    );
-    
-    const pagosRealizados = pagos.length;
-    const pagosEsperados = Math.max(0, tandaData.rondaActual - 1);
-    
-    const pagosAdelantados = pagos.filter(p => p.ronda > tandaData.rondaActual).length;
-    
-    let estado;
-    if (pagosRealizados >= pagosEsperados) {
-      estado = 'al_corriente';
-    } else if (pagosRealizados < pagosEsperados) {
-      estado = 'atrasado';
-    } else {
-      estado = 'pendiente';
-    }
-    
-    return { estado, pagosAdelantados };
-  };
-
+  // 🔧 CORRECCIÓN: Pasar los 3 parámetros correctamente
   const participantesFiltrados = participantes.filter(p => {
     if (filtroEstado === 'todos') return true;
-    const { estado } = calcularEstadoPorParticipante(p.participanteId);
+    const { estado } = calcularEstadoPorParticipante(matrizPagos, tandaData, p.participanteId);
     return estado === filtroEstado;
   });
 
   const estaPagado = (participanteId, ronda) => {
-    if (!matrizPagos || !Array.isArray(matrizPagos)) {
-      return false;
-    }
-    
-    return matrizPagos.some(
-      p => p.participanteId === participanteId && p.ronda === ronda && p.pagado
-    );
+    if (!matrizPagos || !Array.isArray(matrizPagos)) return false;
+    return matrizPagos.some(p => p.participanteId === participanteId && p.ronda === ronda && p.pagado);
   };
 
   return (
@@ -456,19 +401,17 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
               Control de Pagos
             </h2>
             <p className="text-gray-600 mt-1">
-              {tandaData.nombre} • Ronda {tandaData.rondaActual} de {tandaData.totalRondas}
+              {tandaData.nombre} • Ronda {rondaActual} de {tandaData.totalRondas}
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={cargarMatrizPagos}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-blue-500/30 transition-all disabled:opacity-50"
-            >
-              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-              Actualizar
-            </button>
-          </div>
+          <button
+            onClick={cargarMatrizPagos}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-blue-500/30 transition-all disabled:opacity-50"
+          >
+            <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+            Actualizar
+          </button>
         </div>
       </div>
 
@@ -476,52 +419,35 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
       {error && (
         <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 flex items-start gap-3 animate-fadeIn">
           <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-red-600 font-semibold text-sm">{error}</p>
-          </div>
+          <p className="text-red-600 font-semibold text-sm">{error}</p>
         </div>
       )}
 
       {/* Filtros */}
       <div className="bg-white rounded-2xl shadow-lg border-2 border-gray-100 p-4">
-        <div className="flex items-center gap-4 flex-wrap justify-between">
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Filter className="w-5 h-5 text-blue-600" />
-              <span className="font-semibold text-gray-700">Filtrar:</span>
-            </div>
-            <div className="flex gap-2 flex-wrap">
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Filter className="w-5 h-5 text-blue-600" />
+            <span className="font-semibold text-gray-700">Filtrar:</span>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {[
+              { key: 'todos', label: `Todos (${participantes.length})`, gradient: 'from-blue-600 to-blue-800', shadow: 'blue' },
+              { key: 'al_corriente', label: 'Al Corriente', gradient: 'from-green-500 to-emerald-600', shadow: 'green' },
+              { key: 'atrasado', label: 'Atrasados', gradient: 'from-red-500 to-red-600', shadow: 'red' }
+            ].map(filtro => (
               <button
-                onClick={() => setFiltroEstado('todos')}
+                key={filtro.key}
+                onClick={() => setFiltroEstado(filtro.key)}
                 className={`px-4 py-2 rounded-xl font-semibold transition-all ${
-                  filtroEstado === 'todos'
-                    ? 'bg-gradient-to-r from-blue-600 to-blue-800 text-white shadow-lg shadow-blue-500/30'
+                  filtroEstado === filtro.key
+                    ? `bg-gradient-to-r ${filtro.gradient} text-white shadow-lg shadow-${filtro.shadow}-500/30`
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                Todos ({participantes.length})
+                {filtro.label}
               </button>
-              <button
-                onClick={() => setFiltroEstado('al_corriente')}
-                className={`px-4 py-2 rounded-xl font-semibold transition-all ${
-                  filtroEstado === 'al_corriente'
-                    ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg shadow-green-500/30'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Al Corriente
-              </button>
-              <button
-                onClick={() => setFiltroEstado('atrasado')}
-                className={`px-4 py-2 rounded-xl font-semibold transition-all ${
-                  filtroEstado === 'atrasado'
-                    ? 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg shadow-red-500/30'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Atrasados
-              </button>
-            </div>
+            ))}
           </div>
         </div>
       </div>
@@ -555,7 +481,7 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
                   <th
                     key={ronda}
                     className={`px-2 md:px-4 py-3 text-center text-xs font-bold uppercase ${
-                      ronda === tandaData.rondaActual
+                      ronda === rondaActual
                         ? 'bg-green-100 text-green-700 border-2 border-green-300'
                         : 'text-gray-600'
                     }`}
@@ -580,7 +506,12 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
                 participantesFiltrados
                   .sort((a, b) => a.numeroAsignado - b.numeroAsignado)
                   .map((participante) => {
-                    const { estado, pagosAdelantados } = calcularEstadoPorParticipante(participante.participanteId);
+                    // 🔧 CORRECCIÓN: Pasar los 3 parámetros en el orden correcto
+                    const { estado, pagosAdelantados } = calcularEstadoPorParticipante(
+                      matrizPagos, 
+                      tandaData, 
+                      participante.participanteId
+                    );
                     
                     return (
                       <tr key={participante.participanteId} className="hover:bg-gray-50">
@@ -601,8 +532,8 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
                         </td>
                         {rondas.map(ronda => {
                           const pagado = estaPagado(participante.participanteId, ronda);
-                          const esRondaActual = ronda === tandaData.rondaActual;
-                          const esPasado = ronda < tandaData.rondaActual;
+                          const esRondaActual = ronda === rondaActual;
+                          const esPasado = ronda < rondaActual;
                           const puedePagar = puedePagarRonda(participante.participanteId, ronda);
                           
                           const pago = matrizPagos?.find(
@@ -665,18 +596,23 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
                         })}
                         <td className="hidden md:table-cell px-4 py-3 text-center">
                           <div className="flex flex-col items-center gap-1">
-                            {estado === 'al_corriente' && (
-                              <span className="px-3 py-1 bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 border-2 border-green-200 rounded-full text-xs font-bold inline-flex items-center gap-1">
-                                <CheckCircle className="w-3 h-3" />
-                                Al día
-                              </span>
-                            )}
-                            {estado === 'atrasado' && (
-                              <span className="px-3 py-1 bg-gradient-to-r from-red-50 to-rose-50 text-red-700 border-2 border-red-200 rounded-full text-xs font-bold inline-flex items-center gap-1">
-                                <XCircle className="w-3 h-3" />
-                                Atrasado
-                              </span>
-                            )}
+                            <span className={`px-3 py-1 bg-gradient-to-r ${
+                              estado === 'al_corriente' 
+                                ? 'from-green-50 to-emerald-50 text-green-700 border-green-200' 
+                                : 'from-red-50 to-rose-50 text-red-700 border-red-200'
+                            } border-2 rounded-full text-xs font-bold inline-flex items-center gap-1`}>
+                              {estado === 'al_corriente' ? (
+                                <>
+                                  <CheckCircle className="w-3 h-3" />
+                                  Al día
+                                </>
+                              ) : (
+                                <>
+                                  <XCircle className="w-3 h-3" />
+                                  Atrasado
+                                </>
+                              )}
+                            </span>
                           </div>
                         </td>
                       </tr>
@@ -688,7 +624,7 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
         </div>
       </div>
 
-      {/* Modal de Edición de Pago */}
+      {/* Modal de Edición */}
       {showEditModal && pagoSeleccionado && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-fadeIn overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-md w-full my-8 shadow-2xl">
@@ -716,7 +652,6 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
             </div>
 
             <div className="p-6 space-y-4 max-h-[calc(100vh-200px)] overflow-y-auto">
-              {/* Fecha de Pago */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Calendar className="w-4 h-4" />
@@ -730,7 +665,6 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
                 />
               </div>
 
-              {/* Método de Pago */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <CreditCard className="w-4 h-4" />
@@ -749,7 +683,6 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
                 </select>
               </div>
 
-              {/* Monto */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <DollarSign className="w-4 h-4" />
@@ -768,7 +701,6 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
                 </p>
               </div>
 
-              {/* Notas */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <FileText className="w-4 h-4" />
@@ -787,7 +719,6 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
                 </p>
               </div>
 
-              {/* Exento de Pago */}
               <div className="p-4 bg-gradient-to-br from-purple-50 to-indigo-50 border-2 border-purple-200 rounded-xl">
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input
@@ -815,7 +746,6 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
               )}
             </div>
 
-            {/* Botones fijos en la parte inferior */}
             <div className="p-6 bg-gray-50 border-t-2 border-gray-200 rounded-b-2xl">
               <div className="flex gap-3">
                 <button
@@ -857,85 +787,40 @@ export default function PagosView({ tandaData, setTandaData, loadAdminData }) {
           Leyenda
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-sm flex-shrink-0">
-              <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+          {[
+            { icon: CheckCircle, gradient: 'from-green-500 to-emerald-600', label: 'Pagado', desc: 'Doble click para editar' },
+            { icon: CheckCircle, gradient: 'from-purple-500 to-indigo-600', label: 'Exento de Pago', desc: 'Es quien recibe en esa ronda', badge: 'E' },
+            { icon: CheckCircle, gradient: 'from-orange-500 to-amber-600', label: 'Pago Parcial', desc: 'Monto menor al total', badge: 'P' },
+            { icon: XCircle, bg: 'bg-red-100 border-2 border-red-300', color: 'text-red-600', label: 'Atrasado', desc: 'Rondas pasadas sin pagar' },
+            { icon: XCircle, bg: 'bg-blue-100 border-2 border-blue-300', color: 'text-blue-600', label: 'Ronda Actual', desc: 'Click para marcar pagado' },
+            { icon: XCircle, bg: 'bg-gray-200', color: 'text-gray-400', label: 'Bloqueado', desc: 'Pagar rondas anteriores' }
+          ].map((item, idx) => (
+            <div key={idx} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
+              <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center shadow-sm relative flex-shrink-0 ${
+                item.gradient ? `bg-gradient-to-br ${item.gradient}` : item.bg
+              }`}>
+                <item.icon className={`w-4 h-4 sm:w-5 sm:h-5 ${item.gradient ? 'text-white' : item.color}`} />
+                {item.badge && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-purple-700 rounded-full text-white text-[7px] flex items-center justify-center font-bold">
+                    {item.badge}
+                  </span>
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="font-semibold text-gray-800 text-sm">{item.label}</div>
+                <div className="text-xs text-gray-500 truncate">{item.desc}</div>
+              </div>
             </div>
-            <div className="min-w-0">
-              <div className="font-semibold text-gray-800 text-sm">Pagado</div>
-              <div className="text-xs text-gray-500 truncate">Doble click para editar</div>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-sm relative flex-shrink-0">
-              <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-purple-700 rounded-full text-white text-[7px] flex items-center justify-center font-bold">E</span>
-            </div>
-            <div className="min-w-0">
-              <div className="font-semibold text-gray-800 text-sm">Exento de Pago</div>
-              <div className="text-xs text-gray-500 truncate">Es quien recibe en esa ronda</div>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center shadow-sm relative flex-shrink-0">
-              <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-orange-700 rounded-full text-white text-[7px] flex items-center justify-center font-bold">P</span>
-            </div>
-            <div className="min-w-0">
-              <div className="font-semibold text-gray-800 text-sm">Pago Parcial</div>
-              <div className="text-xs text-gray-500 truncate">Monto menor al total</div>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-red-100 border-2 border-red-300 flex items-center justify-center flex-shrink-0">
-              <XCircle className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" />
-            </div>
-            <div className="min-w-0">
-              <div className="font-semibold text-gray-800 text-sm">Atrasado</div>
-              <div className="text-xs text-gray-500 truncate">Rondas pasadas sin pagar</div>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-blue-100 border-2 border-blue-300 flex items-center justify-center flex-shrink-0">
-              <XCircle className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
-            </div>
-            <div className="min-w-0">
-              <div className="font-semibold text-gray-800 text-sm">Ronda Actual</div>
-              <div className="text-xs text-gray-500 truncate">Click para marcar pagado</div>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0">
-              <XCircle className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
-            </div>
-            <div className="min-w-0">
-              <div className="font-semibold text-gray-800 text-sm">Bloqueado</div>
-              <div className="text-xs text-gray-500 truncate">Pagar rondas anteriores</div>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
 
       <style>{`
         @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
         }
-        
-        .animate-fadeIn {
-          animation: fadeIn 0.2s ease-out;
-        }
+        .animate-fadeIn { animation: fadeIn 0.2s ease-out; }
       `}</style>
     </div>
   );

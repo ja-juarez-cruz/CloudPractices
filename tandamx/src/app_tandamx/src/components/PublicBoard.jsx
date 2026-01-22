@@ -1,9 +1,8 @@
 import React from 'react';
 import { Users, AlertCircle, CheckCircle } from 'lucide-react';
-// 🔴 IMPORTAR LOGOS
+import { calcularRondaActual } from '../utils/tandaCalculos';
 import logoTanda from '../public/assets/logos/logo-tanda-512.png';
 import logoTandaSvg from '../public/assets/logos/logo-tanda.svg';
-
 
 export default function PublicBoard({ tandaData, loading }) {
   if (loading) {
@@ -29,22 +28,8 @@ export default function PublicBoard({ tandaData, loading }) {
     );
   }
 
-  const calcularRondaActual = () => {
-    if (!tandaData.fechaInicio) return 1;
-    
-    const fechaInicio = new Date(tandaData.fechaInicio);
-    const fechaActual = new Date();
-    const diasTranscurridos = Math.floor((fechaActual - fechaInicio) / (1000 * 60 * 60 * 24));
-    
-    let diasPorRonda = 7;
-    if (tandaData.frecuencia === 'quincenal') diasPorRonda = 15;
-    else if (tandaData.frecuencia === 'mensual') diasPorRonda = 30;
-    
-    const rondaCalculada = Math.floor(diasTranscurridos / diasPorRonda) + 1;
-    return Math.min(Math.max(1, rondaCalculada), tandaData.totalRondas);
-  };
-
-  const rondaActual = calcularRondaActual();
+  // Usar función importada para calcular ronda actual
+  const rondaActual = calcularRondaActual(tandaData);
   const proximoNumero = tandaData.participantes?.find(p => p.numeroAsignado === rondaActual);
 
   return (

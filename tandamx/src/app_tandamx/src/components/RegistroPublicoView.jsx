@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, CheckCircle, Calendar, DollarSign, AlertCircle, Loader, Shield } from 'lucide-react';
+import { calcularFechasRondas } from '../utils/tandaCalculos';
 
 const API_BASE_URL = 'https://9l2vrevqm1.execute-api.us-east-1.amazonaws.com/dev';
 
@@ -13,21 +14,18 @@ export default function RegistroPublicoView({ token }) {
   const [tiempoRestante, setTiempoRestante] = useState(null);
   const [tandaCompleta, setTandaCompleta] = useState(false);
   
-  // Estados para validación
   const [errores, setErrores] = useState({
     telefono: '',
     email: ''
   });
   
-  // Estados para aviso de privacidad
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [privacyContent, setPrivacyContent] = useState('');
   const [loadingPrivacy, setLoadingPrivacy] = useState(false);
   const [privacyError, setPrivacyError] = useState(null);
   
-  // Estados para sistema de pasos
-  const [pasoActual, setPasoActual] = useState(1); // 1: Selección de Números, 2: Datos y Privacidad
+  const [pasoActual, setPasoActual] = useState(1);
   
   const [formData, setFormData] = useState({
     nombre: '',
@@ -39,10 +37,7 @@ export default function RegistroPublicoView({ token }) {
   useEffect(() => {
     console.log('🎯 RegistroPublicoView montado');
     console.log('📝 Token recibido:', token);
-    console.log('📝 Token type:', typeof token);
-    console.log('📝 Token length:', token?.length);
     
-    // Validar token antes de cargar
     if (!token || token === 'undefined' || token.trim() === '') {
       console.error('❌ Token inválido:', token);
       setError('Link de registro no válido. Por favor solicita un nuevo link.');
@@ -55,13 +50,11 @@ export default function RegistroPublicoView({ token }) {
 
   const cargarDatosTanda = async () => {
     console.log('🔄 Cargando datos de la tanda...');
-    console.log('🔑 Token a usar:', token);
     
     setLoading(true);
     setError(null);
     
     try {
-      // Validación adicional del token
       if (!token || token === 'undefined' || token.trim() === '') {
         throw new Error('Token de registro no válido');
       }
@@ -92,7 +85,6 @@ export default function RegistroPublicoView({ token }) {
       if (data.success && data.data) {
         setTandaData(data.data);
         
-        // Verificar si hay números disponibles
         const numerosOcupados = data.data.participantes?.map(p => p.numeroAsignado) || [];
         const numerosDisponibles = [];
         for (let i = 1; i <= data.data.totalRondas; i++) {
@@ -101,16 +93,13 @@ export default function RegistroPublicoView({ token }) {
           }
         }
         
-        // Si no hay números disponibles, marcar como completa
         if (numerosDisponibles.length === 0) {
           setTandaCompleta(true);
-          // Redirigir después de 3 segundos
           setTimeout(() => {
             window.location.href = `/index.html?tanda=${data.data.tandaId}`;
           }, 3000);
         }
         
-        // Calcular tiempo restante si hay expiración
         if (data.data.expiracion) {
           calcularTiempoRestante(data.data.expiracion);
         }
@@ -125,7 +114,6 @@ export default function RegistroPublicoView({ token }) {
     }
   };
 
-  // Función para cargar el contenido de privacidad desde S3
   const loadPrivacyPolicy = async () => {
     setLoadingPrivacy(true);
     setPrivacyError(null);
@@ -147,19 +135,14 @@ export default function RegistroPublicoView({ token }) {
     }
   };
 
-  // Función para calcular tiempo restante
   const calcularTiempoRestante = (expiracion) => {
     const ahora = new Date().getTime();
     
-    // Convertir expiracion a timestamp en milisegundos
     let fechaExpiracion;
     
     if (typeof expiracion === 'number') {
-      // Si es un número, asumimos que es timestamp Unix en SEGUNDOS
-      // Convertir a milisegundos multiplicando por 1000
       fechaExpiracion = expiracion * 1000;
     } else if (typeof expiracion === 'string') {
-      // Si es string, convertir la fecha ISO a timestamp
       fechaExpiracion = new Date(expiracion).getTime();
     } else {
       console.error('Formato de expiracion desconocido:', expiracion);
@@ -180,98 +163,22 @@ export default function RegistroPublicoView({ token }) {
     setTiempoRestante(`${horas}h ${minutos}m`);
   };
 
-  // useEffect para actualizar el contador cada minuto
   useEffect(() => {
     if (!tandaData?.expiracion) return;
     
-    // Calcular inmediatamente al montar/actualizar
     calcularTiempoRestante(tandaData.expiracion);
     
-    // Luego actualizar cada minuto
     const interval = setInterval(() => {
       calcularTiempoRestante(tandaData.expiracion);
-    }, 60000); // Actualizar cada minuto
+    }, 60000);
     
     return () => clearInterval(interval);
   }, [tandaData]);
 
-  // Calcular fechas de ronda
-  const calcularFechasRonda = (numeroRonda) => {
-    if (!tandaData.fechaInicio) return null;
-    
-    const fechaBase = new Date(tandaData.fechaInicio);
-    const maxDiasPago = 7;
-
-    function calcularFechaRonda(fechaInicial, indice, frecuencia) {
-      const fecha = new Date(fechaInicial);
-
-      if (frecuencia === "semanal") {
-        if (indice === 1) {
-          fecha.setDate(fecha.getDate());
-        } else {
-          fecha.setDate(fecha.getDate() + 7 * (indice - 1));
-        }
-        return fecha;
-      }
-
-      if (frecuencia === "mensual") {
-        fecha.setMonth(fecha.getMonth() + indice - 1);
-        return fecha;
-      }
-
-      if (frecuencia === "quincenal") {
-        let temp = new Date(fecha);
-
-        for (let i = 1; i <= indice; i++) {
-          const dia = temp.getDate();
-
-          if (dia < 15) {
-            // Segunda quincena del mismo mes
-            if (dia === 1 || dia === 15) {
-              temp.setDate(15);
-            } else {
-              temp.setDate(16);
-            }
-          } else {
-            // Primera quincena del siguiente mes
-            temp.setMonth(temp.getMonth() + 1);
-            temp.setDate(1);
-          }
-        }
-        temp.setDate(temp.getDate() - 1);
-        return temp;
-      }
-
-      return fecha;
-    }
-
-    const fechaInicioRonda = calcularFechaRonda(
-      fechaBase,
-      numeroRonda,
-      tandaData.frecuencia
-    );
-    fechaInicioRonda.setDate(fechaInicioRonda.getDate() + 1);
-
-    const fechaLimite = new Date(fechaInicioRonda);
-    
-    if (tandaData.frecuencia === 'semanal') {
-      fechaLimite.setDate(fechaLimite.getDate() + 6);
-    } else {
-      fechaLimite.setDate(fechaLimite.getDate() + maxDiasPago);
-    }
-    
-    return {
-      inicio: fechaInicioRonda,
-      fin: fechaLimite
-    };
-  };
-
   // Funciones de validación
   const validarTelefono = (telefono) => {
-    // Eliminar espacios y caracteres especiales
     const telefonoLimpio = telefono.replace(/\s+/g, '').replace(/[-()\s]/g, '');
     
-    // Debe tener exactamente 10 dígitos
     if (telefonoLimpio.length === 0) {
       return '';
     }
@@ -289,7 +196,7 @@ export default function RegistroPublicoView({ token }) {
 
   const validarEmail = (email) => {
     if (email.trim() === '') {
-      return ''; // Email es opcional
+      return '';
     }
     
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -300,12 +207,10 @@ export default function RegistroPublicoView({ token }) {
     return '';
   };
 
-  // Manejar cambios en campos con validación
   const handleTelefonoChange = (e) => {
     const valor = e.target.value;
     setFormData({ ...formData, telefono: valor });
     
-    // Validar en tiempo real
     const error = validarTelefono(valor);
     setErrores({ ...errores, telefono: error });
   };
@@ -314,14 +219,12 @@ export default function RegistroPublicoView({ token }) {
     const valor = e.target.value;
     setFormData({ ...formData, email: valor });
     
-    // Validar en tiempo real
     const error = validarEmail(valor);
     setErrores({ ...errores, email: error });
   };
 
-  // Toggle selección de número
   const toggleNumero = (numero) => {
-    const maxNumeros = Math.floor(tandaData.totalRondas * 0.5); // 50%
+    const maxNumeros = Math.floor(tandaData.totalRondas * 0.5);
     
     if (numerosSeleccionados.includes(numero)) {
       setNumerosSeleccionados(numerosSeleccionados.filter(n => n !== numero));
@@ -334,21 +237,15 @@ export default function RegistroPublicoView({ token }) {
     }
   };
 
-  // Avanzar al siguiente paso
   const avanzarPaso = () => {
-    // Validar que se seleccionaron números
     if (numerosSeleccionados.length === 0) {
       alert('Por favor selecciona al menos un número para continuar');
       return;
     }
     
-    // Limpiar cualquier error previo
     setError(null);
-    
-    // Avanzar al paso 2
     setPasoActual(2);
     
-    // Scroll suave al indicador de pasos (no al inicio de la página)
     setTimeout(() => {
       const pasosElement = document.querySelector('.indicador-pasos');
       if (pasosElement) {
@@ -357,15 +254,11 @@ export default function RegistroPublicoView({ token }) {
     }, 100);
   };
 
-  // Enviar registro
   const enviarRegistro = async (e) => {
     e.preventDefault();
     
     console.log('📝 Iniciando registro...');
-    console.log('📝 Token:', token);
-    console.log('📝 Datos:', { ...formData, numeros: numerosSeleccionados });
     
-    // Validar aceptación de privacidad
     if (!acceptedPrivacy) {
       alert('Debes aceptar el Aviso de Privacidad para continuar');
       return;
@@ -381,7 +274,6 @@ export default function RegistroPublicoView({ token }) {
       return;
     }
     
-    // Validar teléfono
     const errorTelefono = validarTelefono(formData.telefono);
     if (errorTelefono) {
       setErrores({ ...errores, telefono: errorTelefono });
@@ -389,7 +281,6 @@ export default function RegistroPublicoView({ token }) {
       return;
     }
     
-    // Validar email si fue proporcionado
     if (formData.email.trim()) {
       const errorEmail = validarEmail(formData.email);
       if (errorEmail) {
@@ -399,7 +290,6 @@ export default function RegistroPublicoView({ token }) {
       }
     }
 
-    // Validar token nuevamente antes de enviar
     if (!token || token === 'undefined' || token.trim() === '') {
       setError('Token de registro inválido. Por favor solicita un nuevo link.');
       return;
@@ -436,7 +326,6 @@ export default function RegistroPublicoView({ token }) {
       if (data.success) {
         console.log('✅ Registro exitoso');
         setRegistroExitoso(true);
-        // Redirigir a vista pública después de 2 segundos
         setTimeout(() => {
           window.location.href = `/index.html?tanda=${tandaData.tandaId}`;
         }, 2000);
@@ -449,7 +338,6 @@ export default function RegistroPublicoView({ token }) {
     }
   };
 
-  // Estados de carga y error
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-slate-50 flex items-center justify-center p-4">
@@ -485,7 +373,6 @@ export default function RegistroPublicoView({ token }) {
     );
   }
 
-  // Pantalla de tanda completa
   if (tandaCompleta) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-slate-50 flex items-center justify-center p-4">
@@ -536,7 +423,6 @@ export default function RegistroPublicoView({ token }) {
     );
   }
 
-  // Números disponibles
   const numerosOcupados = tandaData.participantes?.map(p => p.numeroAsignado) || [];
   const numerosDisponibles = Array.from(
     { length: tandaData.totalRondas },
@@ -545,60 +431,25 @@ export default function RegistroPublicoView({ token }) {
 
   const maxNumeros = Math.floor(tandaData.totalRondas * 0.5);
 
-  function calcularFechaRonda(indice) {
-    const fecha = new Date(tandaData.fechaInicio);
-    const frecuencia = tandaData.frecuencia;
+  // Usar función importada para calcular fechas de ronda
+  const obtenerFechasRonda = (numeroRonda) => {
+    if (!tandaData.fechaInicio) return null;
     
-    if (frecuencia === "semanal") {
-      if (indice === 1) {
-        fecha.setDate(fecha.getDate());
-      } else {
-        fecha.setDate(fecha.getDate() + 7 * (indice - 1));
-      }
-      fecha.setDate(fecha.getDate() + 1);
-      return fecha;
-    }
-
-    if (frecuencia === "mensual") {
-      fecha.setMonth(fecha.getMonth() + indice - 1);
-      return fecha;
-    }
-
-    if (frecuencia === "quincenal") {
-      let temp = new Date(fecha);
-      let diaInicial = temp.getDate();
-      let esFinDeMes = diaInicial > 15;
-
-      for (let i = 1; i <= indice; i++) {
-        if (esFinDeMes) {
-          temp = ultimoDiaDelMes(temp);
-        } else {
-          temp.setDate(15);
-        }
-
-        if (i < indice) {
-          if (esFinDeMes) {
-            temp.setDate(1);
-            temp.setMonth(temp.getMonth() + 1);
-            temp.setDate(15);
-          } else {
-            temp = ultimoDiaDelMes(temp);
-          }
-          esFinDeMes = !esFinDeMes;
-        }
-      }
-      return temp;
-    }
-
-    return fecha;
-  }
-
-  function ultimoDiaDelMes(fecha) {
-    const temp = new Date(fecha);
-    temp.setMonth(temp.getMonth() + 1);
-    temp.setDate(0);
-    return temp;
-  }
+    const fechasRondas = calcularFechasRondas(
+      tandaData.fechaInicio,
+      tandaData.totalRondas,
+      tandaData.frecuencia
+    );
+    
+    const ronda = fechasRondas.find(r => r.numero === numeroRonda);
+    
+    if (!ronda) return null;
+    
+    return {
+      inicio: ronda.fechaInicio,
+      fin: ronda.fechaLimite
+    };
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-slate-50 p-4 md:p-8">
@@ -614,7 +465,6 @@ export default function RegistroPublicoView({ token }) {
             </h1>
             <p className="text-gray-600">Registro de Participante</p>
             
-            {/* Contador discreto de expiración */}
             {tiempoRestante && tiempoRestante !== 'Expirado' && (
               <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 bg-gray-100 rounded-md">
                 <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
@@ -636,12 +486,9 @@ export default function RegistroPublicoView({ token }) {
 
           {/* Mensaje informativo si la tanda aún no inicia */}
           {(() => {
-            const fechaInicio = tandaData.fechaInicio ? new Date(tandaData.fechaInicio) : null;
+            const fechaInicio = tandaData.fechaInicio ? new Date(tandaData.fechaInicio + 'T00:00:00') : null;
             const fechaActual = new Date();
-
-            if (fechaInicio) {
-              fechaInicio.setDate(fechaInicio.getDate() + 1);
-            }
+            fechaActual.setHours(0, 0, 0, 0);
             
             if (fechaInicio && fechaInicio > fechaActual) {
               const diasFaltantes = Math.ceil((fechaInicio - fechaActual) / (1000 * 60 * 60 * 24));
@@ -681,7 +528,6 @@ export default function RegistroPublicoView({ token }) {
 
           {/* Resumen Compacto */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            {/* Monto por Ronda */}
             <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-3">
               <div className="flex items-center gap-2 mb-1">
                 <DollarSign className="w-4 h-4 text-green-600" />
@@ -693,7 +539,6 @@ export default function RegistroPublicoView({ token }) {
               <div className="text-[10px] text-gray-600">por ronda</div>
             </div>
 
-            {/* Frecuencia */}
             <div className="bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-3">
               <div className="flex items-center gap-2 mb-1">
                 <Calendar className="w-4 h-4 text-orange-600" />
@@ -705,7 +550,6 @@ export default function RegistroPublicoView({ token }) {
               <div className="text-[10px] text-gray-600">de pagos</div>
             </div>
 
-            {/* Total de Rondas */}
             <div className="bg-gradient-to-br from-blue-50 to-sky-50 border border-blue-200 rounded-xl p-3">
               <div className="flex items-center gap-2 mb-1">
                 <Users className="w-4 h-4 text-blue-600" />
@@ -717,14 +561,10 @@ export default function RegistroPublicoView({ token }) {
               <div className="text-[10px] text-gray-600">totales</div>
             </div>
 
-            {/* Fecha de Inicio */}
             {(() => {
-              const fechaInicio = tandaData.fechaInicio ? new Date(tandaData.fechaInicio) : null;
-              if (fechaInicio) {
-                fechaInicio.setDate(fechaInicio.getDate() + 1);
-              }
+              const fechaInicio = tandaData.fechaInicio ? new Date(tandaData.fechaInicio + 'T00:00:00') : null;
               
-              return fechaInicio && fechaInicio instanceof Date && !isNaN(fechaInicio) ? (
+              return fechaInicio && !isNaN(fechaInicio) ? (
                 <div className="bg-gradient-to-br from-purple-50 to-violet-50 border border-purple-200 rounded-xl p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <Calendar className="w-4 h-4 text-purple-600" />
@@ -743,14 +583,17 @@ export default function RegistroPublicoView({ token }) {
               ) : null;
             })()}
 
-            {/* Fecha de Fin */}
             {(() => {
-              const fechaInicio = tandaData.fechaInicio ? new Date(tandaData.fechaInicio) : null;
+              const fechasRondas = calcularFechasRondas(
+                tandaData.fechaInicio,
+                tandaData.totalRondas,
+                tandaData.frecuencia
+              );
               
-              if (!fechaInicio || isNaN(fechaInicio)) return null;
+              if (fechasRondas.length === 0) return null;
               
-              // Calcular fecha de fin
-              const fechaFin = calcularFechaRonda(tandaData.totalRondas);
+              const ultimaRonda = fechasRondas[fechasRondas.length - 1];
+              const fechaFin = ultimaRonda.fechaInicio;
               
               return (
                 <div className="bg-gradient-to-br from-pink-50 to-rose-50 border border-pink-200 rounded-xl p-3">
@@ -772,7 +615,6 @@ export default function RegistroPublicoView({ token }) {
             })()}
           </div>
 
-          {/* Disponibles */}
           <div className="mt-4 text-center">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-100 to-sky-100 border-2 border-blue-200 rounded-full">
               <Users className="w-4 h-4 text-blue-600" />
@@ -783,10 +625,9 @@ export default function RegistroPublicoView({ token }) {
           </div>
         </div>
 
-        {/* Indicador de Pasos - Línea de Tiempo */}
+        {/* Indicador de Pasos */}
         <div className="indicador-pasos bg-white rounded-3xl shadow-xl p-6 md:p-8 mb-6">
           <div className="flex items-center justify-center gap-4 md:gap-8">
-            {/* Paso 1 */}
             <div className="flex items-center gap-2 md:gap-3">
               <div className={`flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full font-bold transition-all ${
                 pasoActual >= 1 
@@ -805,12 +646,10 @@ export default function RegistroPublicoView({ token }) {
               </div>
             </div>
 
-            {/* Línea conectora */}
             <div className={`h-1 w-12 md:w-24 rounded-full transition-all ${
               pasoActual >= 2 ? 'bg-gradient-to-r from-blue-600 to-blue-800' : 'bg-gray-200'
             }`}></div>
 
-            {/* Paso 2 */}
             <div className="flex items-center gap-2 md:gap-3">
               <div className={`flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full font-bold transition-all ${
                 pasoActual >= 2 
@@ -826,7 +665,6 @@ export default function RegistroPublicoView({ token }) {
             </div>
           </div>
 
-          {/* Labels para móvil */}
           <div className="md:hidden mt-4 text-center">
             <p className="text-sm font-bold text-gray-800">
               {pasoActual === 1 ? 'Paso 1: Selección de Números' : 'Paso 2: Datos y Privacidad'}
@@ -869,7 +707,7 @@ export default function RegistroPublicoView({ token }) {
               {Array.from({ length: tandaData.totalRondas }, (_, i) => i + 1).map((numero) => {
                 const disponible = numerosDisponibles.includes(numero);
                 const seleccionado = numerosSeleccionados.includes(numero);
-                const fechas = disponible ? calcularFechasRonda(numero) : null;
+                const fechas = disponible ? obtenerFechasRonda(numero) : null;
 
                 return (
                   <div key={numero} className="relative flex flex-col group">
@@ -967,7 +805,6 @@ export default function RegistroPublicoView({ token }) {
               })}
             </div>
 
-            {/* Resumen de selección */}
             {numerosSeleccionados.length > 0 && (
               <div className="mb-6 p-4 bg-gradient-to-br from-blue-50 to-sky-50 border-2 border-blue-200 rounded-xl">
                 <h3 className="text-sm font-bold text-blue-900 mb-3">🎯 Números Seleccionados</h3>
@@ -1000,7 +837,6 @@ export default function RegistroPublicoView({ token }) {
               </div>
             )}
 
-            {/* Botón Siguiente */}
             <button
               onClick={avanzarPaso}
               disabled={numerosSeleccionados.length === 0}
@@ -1019,7 +855,6 @@ export default function RegistroPublicoView({ token }) {
         {/* PASO 2: Datos Personales y Confirmación */}
         {pasoActual === 2 && (
           <div className="space-y-6 animate-fadeIn">
-            {/* Formulario de Datos */}
             <div className="bg-white rounded-3xl shadow-xl p-6 md:p-8">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-2 bg-blue-100 rounded-xl">
@@ -1096,7 +931,6 @@ export default function RegistroPublicoView({ token }) {
                   )}
                 </div>
 
-                {/* Aviso de Privacidad */}
                 <div className="pt-4 border-t-2 border-gray-100">
                   <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-xl">
                     <div className="flex items-start gap-3">
@@ -1129,7 +963,6 @@ export default function RegistroPublicoView({ token }) {
               </form>
             </div>
 
-            {/* Resumen Final y Confirmación */}
             <div className="bg-white rounded-3xl shadow-xl p-6 md:p-8">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-2 bg-green-100 rounded-xl">
@@ -1138,7 +971,6 @@ export default function RegistroPublicoView({ token }) {
                 <h2 className="text-2xl font-bold text-gray-800">Resumen de tu Registro</h2>
               </div>
 
-              {/* Números Seleccionados */}
               <div className="mb-6 p-4 bg-gradient-to-br from-blue-50 to-sky-50 border-2 border-blue-200 rounded-xl">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-bold text-blue-900">🎯 Números Seleccionados</h3>
@@ -1182,7 +1014,6 @@ export default function RegistroPublicoView({ token }) {
                 </div>
               </div>
 
-              {/* Botones de Acción */}
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   type="button"
@@ -1237,7 +1068,6 @@ export default function RegistroPublicoView({ token }) {
         {showPrivacyModal && (
           <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col animate-fadeIn">
-              {/* Header */}
               <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-6 text-white">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -1259,7 +1089,6 @@ export default function RegistroPublicoView({ token }) {
                 </div>
               </div>
 
-              {/* Contenido */}
               <div className="p-6 overflow-y-auto flex-1">
                 {loadingPrivacy ? (
                   <div className="flex flex-col items-center justify-center py-12">
@@ -1298,7 +1127,6 @@ export default function RegistroPublicoView({ token }) {
                 )}
               </div>
 
-              {/* Footer */}
               <div className="p-6 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
                 <button
                   onClick={() => setShowPrivacyModal(false)}
@@ -1326,7 +1154,7 @@ export default function RegistroPublicoView({ token }) {
   );
 }
 
-// Agregar estilos CSS
+// Estilos CSS
 if (typeof document !== 'undefined') {
   const style = document.createElement('style');
   style.textContent = `

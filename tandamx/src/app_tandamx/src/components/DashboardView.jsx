@@ -1,5 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { Users, DollarSign, Calendar, CheckCircle, AlertCircle, Clock, TrendingUp, Award, Plus, Sparkles, MessageCircle, Share2, X, Check, Gift } from 'lucide-react';
+import { 
+  calcularRondaActual, 
+  calcularFechaRonda
+} from '../utils/tandaCalculos';
 
 const BASE_URL_ESTATIC_WEB = 'https://app-tandamx.s3.us-east-1.amazonaws.com';
 
@@ -118,100 +122,10 @@ export default function DashboardView({ tandaData, estadisticas, onCrearTanda })
     return new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0);
   }
   
-  function calcularFechaRonda(indice) {
-    // 🆕 Si es cumpleañera, usar fecha de cumpleaños
-    if (esCumpleañera) {
-      return calcularFechaCumpleañosRonda(indice);
-    }
-
-    // Lógica original para tandas normales
-    const fecha = new Date(tandaData.fechaInicio);
-    const frecuencia = tandaData.frecuencia;
-    
-    if (frecuencia === "semanal") {
-      if (indice === 1) {
-        fecha.setDate(fecha.getDate());
-      } else {
-        fecha.setDate(fecha.getDate() + 7 * (indice - 1));
-      }
-      fecha.setDate(fecha.getDate() + 1);
-      return fecha;
-    }
-
-    if (frecuencia === "mensual") {
-      fecha.setMonth(fecha.getMonth() + indice - 1);
-      return fecha;
-    }
-
-    if (frecuencia === "quincenal") {
-      let temp = new Date(fecha);
-      let diaInicial = temp.getDate();
-      let esFinDeMes = diaInicial > 15;
-
-      for (let i = 1; i <= indice; i++) {
-        if (esFinDeMes) {
-          temp = ultimoDiaDelMes(temp);
-        } else {
-          temp.setDate(15);
-        }
-
-        if (i < indice) {
-          if (esFinDeMes) {
-            temp.setDate(1);
-            temp.setMonth(temp.getMonth() + 1);
-            temp.setDate(15);
-          } else {
-            temp = ultimoDiaDelMes(temp);
-          }
-          esFinDeMes = !esFinDeMes;
-        }
-      }
-      return temp;
-    }
-
-    return fecha;
-  }
+  
   
   // Calcular ronda actual basada en fecha
-  const calcularRondaActual = () => {
-    // 🆕 Para tandas cumpleañeras, buscar el próximo cumpleaños
-    if (esCumpleañera) {
-      const participantes = tandaData.participantes || [];
-      if (participantes.length === 0) return 1;
-      
-      const hoy = new Date();
-      hoy.setHours(0, 0, 0, 0);
-      
-      let proximoNumero = null;
-      let menorDiferencia = Infinity;
-      
-      participantes.forEach(p => {
-        if (p.fechaCumpleaños) {
-          const diasHasta = calcularDiasHastaCumpleaños(p.numeroAsignado);
-          if (diasHasta !== null && diasHasta >= 0 && diasHasta < menorDiferencia) {
-            menorDiferencia = diasHasta;
-            proximoNumero = p.numeroAsignado;
-          }
-        }
-      });
-      
-      return proximoNumero || 1;
-    }
-
-    // Lógica original para tandas normales
-    if (!tandaData.fechaInicio) return 1;
-
-    const fechaInicio = new Date(tandaData.fechaInicio);
-    const fechaActual = new Date();
-    const diasTranscurridos = Math.floor((fechaActual - fechaInicio) / (1000 * 60 * 60 * 24));
-
-    let diasPorRonda = 7;
-    if (tandaData.frecuencia === 'quincenal') diasPorRonda = 15;
-    else if (tandaData.frecuencia === 'mensual') diasPorRonda = 30;
-
-    const rondaCalculada = Math.floor(diasTranscurridos / diasPorRonda) + 1;
-    return Math.min(Math.max(1, rondaCalculada), tandaData.totalRondas);
-  };
+  const rondaActual = calcularRondaActual(tandaData);
 
   const copyPublicLink = () => {
     if (!tandaData) return;
@@ -231,8 +145,8 @@ export default function DashboardView({ tandaData, estadisticas, onCrearTanda })
     if (!tandaData) return;
     
     const publicUrl = `${BASE_URL_ESTATIC_WEB}/index.html?tanda=${tandaData.tandaId}`;
-    const fechaInicio = new Date(tandaData.fechaInicio);
-    fechaInicio.setDate(fechaInicio.getDate() + 1);
+    const fechaInicio = new Date(tandaData.fechaInicio + 'T00:00:00');
+    fechaInicio.setDate(fechaInicio.getDate());
     
     const mensaje = `📊 Consulta nuestro tablero publico!
 
@@ -256,9 +170,6 @@ ${publicUrl}`;
     setShowWhatsAppModal(false);
   };
 
-  const rondaActual = calcularRondaActual();
-  console.log('rondaActual: ',rondaActual)
-
   // 🆕 Calcular días hasta próximo cumpleaños
   const diasHastaProximoCumple = calcularDiasHastaCumpleaños(rondaActual);
   console.log('diasHastaProximoCumple: ',diasHastaProximoCumple)
@@ -266,11 +177,11 @@ ${publicUrl}`;
   // Verificar si la tanda ya inició
   const fechaInicioTanda = esCumpleañera 
     ? obtenerRangoFechasCumpleañera()?.inicio 
-    : new Date(tandaData.fechaInicio);
+    : new Date(tandaData.fechaInicio + 'T00:00:00');
   
   const fechaInicioTanda2 = fechaInicioTanda ? new Date(fechaInicioTanda) : null;
   if (fechaInicioTanda2 && !esCumpleañera) {
-    fechaInicioTanda2.setDate(fechaInicioTanda2.getDate() + 1);
+    fechaInicioTanda2.setDate(fechaInicioTanda2.getDate());
   }
   
   const fechaActual = new Date();
@@ -278,10 +189,9 @@ ${publicUrl}`;
   
   const tandaIniciada = fechaInicioTanda ? fechaActual >= fechaInicioTanda : false;
   const diasHastaInicio = fechaInicioTanda ? Math.ceil((fechaInicioTanda - fechaActual) / (1000 * 60 * 60 * 24)) : 0;
-  const diasHastaInicio2 = diasHastaInicio + (esCumpleañera ? 0 : 1);
 
   // Calcular fecha de inicio de la ronda actual
-  const fechaInicioRondaActual = calcularFechaRonda(rondaActual);
+  const fechaInicioRondaActual = calcularFechaRonda(fechaInicioTanda,rondaActual,tandaData.frecuencia);
 
   // 🔧 Texto dinámico para el banner según el número de cumpleaños
   const getTextoCumpleanos = () => {

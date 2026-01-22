@@ -1,5 +1,10 @@
 import React from 'react';
 import { Users, Plus, Calendar, DollarSign, TrendingUp, ArrowRight, Trash2, AlertTriangle, Gift, Clock, CheckCircle, AlertCircle, Sparkles } from 'lucide-react';
+import { 
+  calcularFechasRondas, 
+  calcularRondaActual,
+  obtenerFechaHoyISO 
+} from '../utils/tandaCalculos';
 
 export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, onCrearNueva, onEliminarTanda }) {
   console.log('🎬 InicioView INICIADO');
@@ -119,52 +124,48 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
     );
   }
 
-  // 🔧 FUNCIONES COPIADAS DE DASHBOARDVIEW (versiones correctas)
+  // ==================== FUNCIONES DE CUMPLEAÑOS ====================
   
   // Función para calcular fecha de cumpleaños del participante de una ronda específica
   function calcularFechaCumpleañosRonda(tanda, numeroRonda) {
-      if (tanda.frecuencia !== 'cumpleaños') return null;
-      
-      const participantes = tanda.participantes || [];
-      const participante = participantes.find(p => p.numeroAsignado === numeroRonda);
-      
-      if (!participante || !participante.fechaCumpleaños) return null;
-      
-      // 🔧 CORRECCIÓN: Agregar T00:00:00 para evitar problemas de zona horaria
-      const fechaCumple = new Date(participante.fechaCumpleaños + 'T00:00:00');
-      
-      // Obtener hoy sin hora (solo fecha)
-      const hoy = new Date();
-      hoy.setHours(0, 0, 0, 0);
-      
-      // Calcular el próximo cumpleaños (este año)
-      let proximoCumple = new Date(hoy.getFullYear(), fechaCumple.getMonth(), fechaCumple.getDate());
-      proximoCumple.setHours(0, 0, 0, 0);
-      
-      // 🔧 CORRECCIÓN: Solo pasar al próximo año si YA PASÓ (no si es hoy)
-      if (proximoCumple < hoy) {
-        proximoCumple.setFullYear(hoy.getFullYear() + 1);
-      }
-      
-      return proximoCumple;
+    if (tanda.frecuencia !== 'cumpleaños') return null;
+    
+    const participantes = tanda.participantes || [];
+    const participante = participantes.find(p => p.numeroAsignado === numeroRonda);
+    
+    if (!participante || !participante.fechaCumpleaños) return null;
+    
+    const fechaCumple = new Date(participante.fechaCumpleaños + 'T00:00:00');
+    
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    
+    let proximoCumple = new Date(hoy.getFullYear(), fechaCumple.getMonth(), fechaCumple.getDate());
+    proximoCumple.setHours(0, 0, 0, 0);
+    
+    if (proximoCumple < hoy) {
+      proximoCumple.setFullYear(hoy.getFullYear() + 1);
     }
+    
+    return proximoCumple;
+  }
 
-    // Calcular días hasta el próximo cumpleaños
-    function calcularDiasHastaCumpleaños(tanda, numeroRonda) {
-      const fechaCumple = calcularFechaCumpleañosRonda(tanda, numeroRonda);
-      if (!fechaCumple) return null;
-      
-      const hoy = new Date();
-      hoy.setHours(0, 0, 0, 0);
-      
-      const diferencia = fechaCumple - hoy;
-      const dias = Math.ceil(diferencia / (1000 * 60 * 60 * 24));
-      
-      return dias;
-    }
+  // Calcular días hasta el próximo cumpleaños
+  function calcularDiasHastaCumpleaños(tanda, numeroRonda) {
+    const fechaCumple = calcularFechaCumpleañosRonda(tanda, numeroRonda);
+    if (!fechaCumple) return null;
+    
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    
+    const diferencia = fechaCumple - hoy;
+    const dias = Math.ceil(diferencia / (1000 * 60 * 60 * 24));
+    
+    return dias;
+  }
 
-    // 🆕 Función mejorada para calcular próximo cumpleaños (puede haber múltiples el mismo día)
-    const calcularProximoCumpleanos = (tanda) => {
+  // Función mejorada para calcular próximo cumpleaños
+  const calcularProximoCumpleanos = (tanda) => {
     console.log('🎂 calcularProximoCumpleanos INICIADO');
     console.log('   Tanda:', tanda.nombre);
     console.log('   Frecuencia:', tanda.frecuencia);
@@ -179,10 +180,9 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
     hoy.setHours(0, 0, 0, 0);
     console.log('   📅 Hoy:', hoy.toLocaleDateString('es-MX'));
     
-    // Ordenar participantes por número asignado
     const participantesOrdenados = [...tanda.participantes].sort((a, b) => a.numeroAsignado - b.numeroAsignado);
     
-    // 🆕 Encontrar cumpleañeros de HOY (fecha de cumpleaños === hoy)
+    // Encontrar cumpleañeros de HOY
     let cumpleañerosHoy = [];
     participantesOrdenados.forEach(p => {
       if (p.fechaCumpleaños) {
@@ -195,7 +195,7 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
       }
     });
     
-    // Encontrar el número actual (el que ya pasó su cumpleaños o es hoy)
+    // Encontrar el número actual
     let numeroActual = null;
     let participanteActual = null;
     
@@ -208,7 +208,7 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
           numeroActual = p.numeroAsignado;
           participanteActual = p;
         } else {
-          break; // Ya encontramos el último que cumplió
+          break;
         }
       }
     }
@@ -217,7 +217,7 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
     console.log('   👤 Participante actual:', participanteActual?.nombre);
     console.log('   🎉 Cumpleañeros HOY:', cumpleañerosHoy.map(c => `#${c.numeroAsignado} ${c.nombre}`).join(', '));
 
-    // 🆕 Calcular días faltantes de la RONDA ACTUAL
+    // Calcular días faltantes de la RONDA ACTUAL
     let diasFaltantesActual = null;
     if (participanteActual?.fechaCumpleaños) {
       const fechaActual = new Date(participanteActual.fechaCumpleaños + 'T00:00:00');
@@ -226,7 +226,7 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
       console.log('   ⏱️ Días faltantes ronda actual:', diasFaltantesActual);
     }
 
-    // 🆕 Encontrar cumpleañeros recientes (número anterior con misma fecha)
+    // Encontrar cumpleañeros recientes
     let cumpleañerosRecientes = [];
     
     if (numeroActual && participanteActual) {
@@ -235,7 +235,6 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
       
       const diasDesdeActual = Math.ceil((hoy - fechaActual) / (1000 * 60 * 60 * 24));
       
-      // Si han pasado 5 días o menos desde el cumpleaños actual, mantenerlo en recientes
       if (diasDesdeActual <= 5) {
         cumpleañerosRecientes.push({
           ...participanteActual,
@@ -244,7 +243,6 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
         });
       }
       
-      // Buscar números anteriores con la MISMA fecha que el actual
       for (let i = numeroActual - 1; i >= 1; i--) {
         const participanteAnterior = participantesOrdenados.find(p => p.numeroAsignado === i);
         
@@ -252,7 +250,6 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
           const fechaAnterior = new Date(participanteAnterior.fechaCumpleaños + 'T00:00:00');
           fechaAnterior.setHours(0, 0, 0, 0);
           
-          // Si tiene la misma fecha que el actual, agregarlo
           if (fechaAnterior.getTime() === fechaActual.getTime()) {
             cumpleañerosRecientes.push({
               ...participanteAnterior,
@@ -260,23 +257,20 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
               fechaUltimoCumple: fechaAnterior
             });
           } else {
-            // Si encontramos una fecha diferente, detenemos la búsqueda
             break;
           }
         }
       }
       
-      // Ordenar recientes por número asignado (ascendente)
       cumpleañerosRecientes.sort((a, b) => a.numeroAsignado - b.numeroAsignado);
     }
 
-    // 🆕 Encontrar el PRÓXIMO cumpleaños (siguiente número después del actual)
+    // Encontrar el PRÓXIMO cumpleaños
     let proximoCumple = null;
     let cumpleañerosProximos = [];
     let menorDiferencia = Infinity;
     
     if (numeroActual) {
-      // Buscar el siguiente número
       const siguienteParticipante = participantesOrdenados.find(p => p.numeroAsignado === numeroActual + 1);
       
       if (siguienteParticipante?.fechaCumpleaños) {
@@ -287,7 +281,6 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
         proximoCumple = fechaSiguiente;
         cumpleañerosProximos.push(siguienteParticipante);
         
-        // 🆕 Buscar TODOS los participantes con la misma fecha del siguiente (sin límite)
         for (let i = numeroActual + 2; i <= Math.max(...participantesOrdenados.map(p => p.numeroAsignado)); i++) {
           const otroParticipante = participantesOrdenados.find(p => p.numeroAsignado === i);
           
@@ -298,12 +291,10 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
             if (otraFecha.getTime() === fechaSiguiente.getTime()) {
               cumpleañerosProximos.push(otroParticipante);
             }
-            // 🆕 NO rompemos el loop, seguimos buscando todos con esa fecha
           }
         }
       }
     } else {
-      // Si no hay número actual (aún no ha pasado ningún cumpleaños), buscar el primero
       const primerParticipante = participantesOrdenados.find(p => p.fechaCumpleaños);
       
       if (primerParticipante) {
@@ -314,7 +305,6 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
         proximoCumple = fechaPrimero;
         cumpleañerosProximos.push(primerParticipante);
         
-        // 🆕 Buscar TODOS los participantes con la misma fecha (sin límite)
         for (let i = 2; i <= Math.max(...participantesOrdenados.map(p => p.numeroAsignado)); i++) {
           const otroParticipante = participantesOrdenados.find(p => p.numeroAsignado === i);
           
@@ -325,7 +315,6 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
             if (otraFecha.getTime() === fechaPrimero.getTime()) {
               cumpleañerosProximos.push(otroParticipante);
             }
-            // 🆕 NO rompemos el loop, seguimos buscando todos con esa fecha
           }
         }
       }
@@ -333,15 +322,15 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
 
     const resultado = {
       fecha: proximoCumple,
-      diasFaltantes: diasFaltantesActual, // Días faltantes de la RONDA ACTUAL
-      diasFaltantesProximo: menorDiferencia !== Infinity ? menorDiferencia : null, // Días para el próximo
+      diasFaltantes: diasFaltantesActual,
+      diasFaltantesProximo: menorDiferencia !== Infinity ? menorDiferencia : null,
       participante: cumpleañerosProximos[0] || null,
-      cumpleañerosProximos, // 🆕 Lista de próximos cumpleañeros
+      cumpleañerosProximos,
       cantidadCumpleañeros: cumpleañerosProximos.length,
       cumpleañerosRecientes,
-      cumpleañerosHoy, // 🆕 Lista de cumpleañeros de HOY
-      cantidadCumpleañerosHoy: cumpleañerosHoy.length, // 🆕 Cantidad de cumpleañeros hoy
-      numeroActual: participanteActual // Para referencia
+      cumpleañerosHoy,
+      cantidadCumpleañerosHoy: cumpleañerosHoy.length,
+      numeroActual: participanteActual
     };
     
     console.log('   📊 RESULTADO:');
@@ -357,7 +346,7 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
     return resultado;
   };
 
-  // 🆕 Función para obtener rango de fechas de cumpleaños
+  // Función para obtener rango de fechas de cumpleaños
   const obtenerRangoCumpleanos = (tanda) => {
     if (tanda.frecuencia !== 'cumpleaños' || !tanda.participantes || tanda.participantes.length === 0) {
       return null;
@@ -370,12 +359,10 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
     
     tanda.participantes.forEach(p => {
       if (p.fechaCumpleaños) {
-        // 🔧 CORRECCIÓN: Agregar T00:00:00 para evitar problemas de zona horaria
         const fechaCumple = new Date(p.fechaCumpleaños + 'T00:00:00');
         let proximoCumple = new Date(hoy.getFullYear(), fechaCumple.getMonth(), fechaCumple.getDate());
         proximoCumple.setHours(0, 0, 0, 0);
         
-        // Solo pasar al próximo año si YA PASÓ (no si es hoy)
         if (proximoCumple < hoy) {
           proximoCumple.setFullYear(hoy.getFullYear() + 1);
         }
@@ -396,7 +383,6 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
 
   // Calcular estadísticas globales basadas en fechas
   const calcularEstadoTanda = (tanda) => {
-    // 🆕 Para tandas cumpleañeras
     if (tanda.frecuencia === 'cumpleaños') {
       const rango = obtenerRangoCumpleanos(tanda);
       if (!rango) return 'proximas';
@@ -413,27 +399,23 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
       }
     }
 
-    // Lógica original para tandas normales
+    // Lógica para tandas normales usando calcularFechasRondas
     if (!tanda.fechaInicio) return 'proximas';
     
-    const fechaInicio = new Date(tanda.fechaInicio);
     const fechaActual = new Date();
     fechaActual.setHours(0, 0, 0, 0);
+    
+    const fechasRondas = calcularFechasRondas(tanda.fechaInicio, tanda.totalRondas, tanda.frecuencia);
+    
+    if (fechasRondas.length === 0) return 'proximas';
+    
+    const primeraRonda = fechasRondas[0];
+    const ultimaRonda = fechasRondas[fechasRondas.length - 1];
+    
+    const fechaInicio = primeraRonda.fechaInicio;
     fechaInicio.setHours(0, 0, 0, 0);
     
-    let diasPorRonda = 7;
-    if (tanda.frecuencia === 'quincenal') diasPorRonda = 15;
-    else if (tanda.frecuencia === 'mensual') diasPorRonda = 30;
-    
-    const diasHastaUltimaRonda = (tanda.totalRondas - 1) * diasPorRonda;
-    const fechaInicioUltimaRonda = new Date(fechaInicio);
-    fechaInicioUltimaRonda.setDate(fechaInicioUltimaRonda.getDate() + diasHastaUltimaRonda);
-    
-    const fechaSiguienteRonda = new Date(fechaInicioUltimaRonda);
-    fechaSiguienteRonda.setDate(fechaSiguienteRonda.getDate() + diasPorRonda);
-    
-    const fechaFin = new Date(fechaSiguienteRonda);
-    fechaFin.setDate(fechaFin.getDate() - 1);
+    const fechaFin = new Date(ultimaRonda.fechaLimite);
     fechaFin.setHours(23, 59, 59, 999);
     
     if (fechaActual < fechaInicio) {
@@ -667,7 +649,6 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                     const esCumpleañera = tanda.frecuencia === 'cumpleaños';
                     console.log('   Es cumpleañera?', esCumpleañera);
                     
-                    // 🚨 VERIFICAR SI TIENE DATOS COMPLETOS
                     const tieneParticipantesCompletos = tanda.participantes?.some(p => p.fechaCumpleaños);
                     console.log('   🚨 Participantes tienen fechaCumpleaños?', tieneParticipantesCompletos);
                     
@@ -676,73 +657,14 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                       console.log('   Necesita recargar datos desde API');
                     }
                     
-                    // 🆕 Datos específicos para cumpleañeras
                     const proximoCumple = esCumpleañera ? calcularProximoCumpleanos(tanda) : null;
                     const rangoCumple = esCumpleañera ? obtenerRangoCumpleanos(tanda) : null;
                     
                     console.log('   proximoCumple:', proximoCumple);
                     console.log('   rangoCumple:', rangoCumple);
                     
-                    // 🔧 Calcular ronda actual (COPIADO DE DASHBOARDVIEW)
-                    const calcularRondaActual = () => {
-                      console.log('🔢 calcularRondaActual INICIADO para:', tanda.nombre);
-                      
-                      // 🆕 Para tandas cumpleañeras, buscar el próximo cumpleaños
-                      if (esCumpleañera) {
-                        console.log('   ✅ Es CUMPLEAÑERA');
-                        const participantes = tanda.participantes || [];
-                        console.log('   Participantes:', participantes.length);
-                        
-                        if (participantes.length === 0) {
-                          console.log('   ❌ Sin participantes, retorna 1');
-                          return 1;
-                        }
-                        
-                        const hoy = new Date();
-                        hoy.setHours(0, 0, 0, 0);
-                        
-                        let proximoNumero = null;
-                        let menorDiferencia = Infinity;
-                        
-                        participantes.forEach(p => {
-                          console.log(`   Participante completo:`, p);
-                          
-                          if (p.fechaCumpleaños) {
-                            const diasHasta = calcularDiasHastaCumpleaños(tanda, p.numeroAsignado);
-                            console.log(`   #${p.numeroAsignado} ${p.nombre}: ${diasHasta} días`);
-                            
-                            if (diasHasta !== null && diasHasta >= 0 && diasHasta < menorDiferencia) {
-                              console.log(`      ⭐ NUEVO PRÓXIMO: #${p.numeroAsignado}`);
-                              menorDiferencia = diasHasta;
-                              proximoNumero = p.numeroAsignado;
-                            }
-                          }
-                        });
-                        
-                        const resultado = proximoNumero || 1;
-                        console.log('   📊 RONDA ACTUAL CALCULADA:', resultado);
-                        return resultado;
-                      }
-                      
-                      // Lógica original para tandas normales
-                      console.log('   ℹ️ Tanda NORMAL');
-                      if (!tanda.fechaInicio) return 1;
-                      
-                      const fechaInicio = new Date(tanda.fechaInicio);
-                      const fechaActual = new Date();
-                      const diasTranscurridos = Math.floor((fechaActual - fechaInicio) / (1000 * 60 * 60 * 24));
-                      
-                      let diasPorRonda = 7;
-                      if (tanda.frecuencia === 'quincenal') diasPorRonda = 15;
-                      else if (tanda.frecuencia === 'mensual') diasPorRonda = 30;
-                      
-                      const rondaCalculada = Math.floor(diasTranscurridos / diasPorRonda) + 1;
-                      const resultado = Math.min(Math.max(1, rondaCalculada), tanda.totalRondas);
-                      console.log('   📊 RONDA ACTUAL CALCULADA:', resultado);
-                      return resultado;
-                    };
-                    
-                    const rondaActualCalculada = calcularRondaActual();
+                    // Usar función importada para calcular ronda actual
+                    const rondaActualCalculada = calcularRondaActual(tanda);
                     console.log('   ✅ RONDA ACTUAL FINAL:', rondaActualCalculada);
                     
                     // Calcular progreso
@@ -754,17 +676,8 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                           : 0;
                       }
                       
-                      // Lógica original
                       if (!tanda.fechaInicio) return 0;
-                      const fechaInicio = new Date(tanda.fechaInicio);
-                      const fechaActual = new Date();
-                      const diasTranscurridos = Math.floor((fechaActual - fechaInicio) / (1000 * 60 * 60 * 24));
-                      
-                      let diasPorRonda = 7;
-                      if (tanda.frecuencia === 'quincenal') diasPorRonda = 15;
-                      else if (tanda.frecuencia === 'mensual') diasPorRonda = 30;
-                      
-                      const rondasCompletadas = Math.floor(diasTranscurridos / diasPorRonda);
+                      const rondasCompletadas = rondaActualCalculada - 1;
                       return tanda.totalRondas > 0 
                         ? Math.round((Math.max(0, rondasCompletadas) / tanda.totalRondas) * 100) 
                         : 0;
@@ -776,11 +689,9 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                       p => p.numeroAsignado === rondaActualCalculada
                     );
                     
-                    // 🔧 CORRECCIÓN: totalParticipantes debe ser la cantidad real de participantes
                     const numeroParticipantes = Array.isArray(tanda.participantes) ? tanda.participantes.length : 0;
-                    const totalParticipantes = numeroParticipantes; // Variable correcta para cálculos
+                    const totalParticipantes = numeroParticipantes;
                     
-                    // 🔧 Para cumpleañeras, cada cumpleañero recibe (N-1) × monto
                     const cantidadARecibir = esCumpleañera 
                       ? (totalParticipantes - 1) * tanda.montoPorRonda 
                       : tanda.montoPorRonda * totalParticipantes;
@@ -794,7 +705,6 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                       console.log('      Cantidad cumpleañeros:', proximoCumple.cantidadCumpleañeros);
                     }
 
-                    // 🆕 Colores según tipo de tanda
                     const colores = esCumpleañera ? {
                       header: 'from-pink-500 to-purple-600',
                       headerHover: 'hover:from-pink-600 hover:to-purple-700',
@@ -911,10 +821,9 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                             </div>
                           )}
 
-                          {/* 🆕 Contador de días para cumpleañeras */}
+                          {/* Contador de días para cumpleañeras */}
                           {esCumpleañera && proximoCumple && (
                             <div className="p-3 bg-gradient-to-r from-pink-50 to-purple-50 border-2 border-pink-200 rounded-xl">
-                              {/* 🎂 CUMPLEAÑOS HOY (diasFaltantes === 0) */}
                               {proximoCumple.diasFaltantes === 0 ? (
                                 <>
                                   <div className="flex items-center justify-between mb-2">
@@ -925,7 +834,6 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                                       </span>
                                     </div>
                                   </div>
-                                  {/* Mostrar quién(es) cumple(n) hoy */}
                                   <div className="space-y-1">
                                     {proximoCumple.cumpleañerosHoy.map((cumple, idx) => (
                                       <div key={idx} className="flex items-center gap-2 bg-pink-200 p-2 rounded-lg">
@@ -949,7 +857,6 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                                   </div>
                                 </>
                               ) : proximoCumple.cumpleañerosRecientes && proximoCumple.cumpleañerosRecientes.length > 0 ? (
-                                /* 🎉 CUMPLEAÑOS RECIENTE (últimos 5 días) */
                                 <>
                                   <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-2">
@@ -962,7 +869,6 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                                       Hace {proximoCumple.cumpleañerosRecientes[0].diasDesde} día{proximoCumple.cumpleañerosRecientes[0].diasDesde !== 1 ? 's' : ''}
                                     </div>
                                   </div>
-                                  {/* Mostrar quién cumplió recientemente */}
                                   <div className="space-y-1">
                                     {proximoCumple.cumpleañerosRecientes.map((cumple, idx) => (
                                       <div key={idx} className="flex items-center gap-2 bg-pink-100 p-2 rounded-lg">
@@ -986,7 +892,6 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                                   </div>
                                 </>
                               ) : proximoCumple.cantidadCumpleañeros > 1 ? (
-                                /* 👥 MÚLTIPLES PRÓXIMOS CUMPLEAÑEROS */
                                 <>
                                   <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-2">
@@ -1006,7 +911,6 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                                       </div>
                                     )}
                                   </div>
-                                  {/* Lista de nombres de cumpleañeros */}
                                   <div className="flex flex-wrap gap-1 mt-2">
                                     {proximoCumple.cumpleañerosHoy.map((cumple, idx) => (
                                       <span key={idx} className="text-[10px] bg-pink-200 text-pink-800 px-2 py-0.5 rounded-full font-semibold">
@@ -1016,7 +920,6 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                                   </div>
                                 </>
                               ) : (
-                                /* 📅 UN SOLO PRÓXIMO CUMPLEAÑERO */
                                 <>
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
@@ -1041,18 +944,16 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                             </div>
                           )}
 
-                          {/* 🆕 Fechas específicas para cumpleañeras */}
+                          {/* Fechas específicas */}
                           {esCumpleañera && proximoCumple && proximoCumple.cumpleañerosHoy && proximoCumple.cumpleañerosHoy.length > 0 ? (
                             <div className="p-3 bg-gradient-to-r from-pink-50 to-purple-50 border-2 border-pink-200 rounded-xl">
                               <div className="flex flex-col gap-2">
-                                {/* Título */}
                                 <div className="text-[10px] text-pink-600 font-semibold">
                                   {proximoCumple.cumpleañerosHoy.length > 1 
                                     ? `Próximos Cumpleaños (${proximoCumple.cumpleañerosHoy.length})`
                                     : 'Próximo Cumpleaños'}
                                 </div>
                                 
-                                {/* Lista de cumpleañeros */}
                                 <div className="flex flex-col gap-2">
                                   {proximoCumple.cumpleañerosProximos.map((cumpleañero, index) => (
                                     <div key={cumpleañero.numeroAsignado} className="flex items-center gap-3">
@@ -1063,38 +964,25 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                                         <div className="text-xs font-bold text-gray-800">
                                           {cumpleañero.nombre.split(' ')[0]}
                                         </div>
-                                        {(
-                                          <div className="text-xs text-pink-500 font-semibold">
-                                            {proximoCumple.fecha?.toLocaleDateString('es-MX', { 
-                                              day: 'numeric', 
-                                              month: 'long',
-                                              year: 'numeric'
-                                            })}
-                                          </div>
-                                        )}
+                                        <div className="text-xs text-pink-500 font-semibold">
+                                          {proximoCumple.fecha?.toLocaleDateString('es-MX', { 
+                                            day: 'numeric', 
+                                            month: 'long',
+                                            year: 'numeric'
+                                          })}
+                                        </div>
                                       </div>
                                     </div>
                                   ))}
                                 </div>
-                                
-                                {/* Mostrar la fecha solo una vez si hay múltiples cumpleañeros
-                                {proximoCumple.cumpleañerosHoy.length > 1 && (
-                                  <div className="text-xs text-pink-600 font-semibold text-center pt-1 border-t border-pink-200">
-                                    {proximoCumple.fecha?.toLocaleDateString('es-MX', { 
-                                      day: 'numeric', 
-                                      month: 'long',
-                                      year: 'numeric'
-                                    })}
-                                  </div>
-                                )}*/}
                               </div>
                             </div>
                           ) : (
                             /* Fechas para tandas normales */
                             <div className="grid grid-cols-2 gap-2">
                               {tanda.fechaInicio && (() => {
-                                const fechaInicio = new Date(tanda.fechaInicio);
-                                fechaInicio.setDate(fechaInicio.getDate() + 1);
+                                const fechaInicio = new Date(tanda.fechaInicio + 'T00:00:00');
+                                fechaInicio.setDate(fechaInicio.getDate());
                                 return (
                                   <div className="p-2 bg-blue-50 border border-blue-200 rounded-lg">
                                     <div className="text-[10px] text-blue-600 font-semibold mb-1">
@@ -1111,34 +999,15 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                                 );
                               })()}
                               
-                              {/* Calcular fecha fin para tandas normales */}
                               {tanda.fechaInicio && (() => {
-                                const fechaInicio = new Date(tanda.fechaInicio);
-                                let fechaFin = null;
+                                const fechasRondas = calcularFechasRondas(tanda.fechaInicio, tanda.totalRondas, tanda.frecuencia);
+                                
+                                if (fechasRondas.length === 0) return null;
+                                
+                                const ultimaRonda = fechasRondas[fechasRondas.length - 1];
+                                const fechaFin = new Date(ultimaRonda.fechaInicio);
 
-                                if (tanda.frecuencia === 'semanal') {
-                                  const diasHasta = (tanda.totalRondas - 1) * 7;
-                                  fechaFin = new Date(fechaInicio);
-                                  fechaFin.setDate(fechaFin.getDate() + diasHasta + 1);
-                                } else if (tanda.frecuencia === 'quincenal') {
-                                  let temp = new Date(fechaInicio);
-                                  for (let i = 1; i < tanda.totalRondas + 1; i++) {
-                                    const dia = temp.getDate();
-                                    if (dia < 15) {
-                                      temp.setDate(dia === 1 || dia === 15 ? 15 : 16);
-                                    } else {
-                                      temp.setMonth(temp.getMonth() + 1);
-                                      temp.setDate(1);
-                                    }
-                                  }
-                                  fechaFin = temp;
-                                } else if (tanda.frecuencia === 'mensual') {
-                                  fechaFin = new Date(fechaInicio);
-                                  fechaFin.setMonth(fechaFin.getMonth() + tanda.totalRondas - 1);
-                                  fechaFin.setDate(fechaFin.getDate() + 1);
-                                }
-
-                                return fechaFin ? (
+                                return (
                                   <div className="p-2 bg-purple-50 border border-purple-200 rounded-lg">
                                     <div className="text-[10px] text-purple-600 font-semibold mb-1">
                                       Fin
@@ -1151,7 +1020,7 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                                       })}
                                     </div>
                                   </div>
-                                ) : null;
+                                );
                               })()}
                             </div>
                           )}

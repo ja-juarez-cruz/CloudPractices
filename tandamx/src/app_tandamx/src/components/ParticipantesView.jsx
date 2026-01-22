@@ -1,10 +1,13 @@
+// ParticipantesView.jsx - REFACTORIZADO
 import React, { useState } from 'react';
-import { Users, Plus, Edit, Trash2, X, Save, Phone, Mail, MessageCircle, Link as LinkIcon, Copy, Check, ArrowLeft, AlertCircle, MessageSquare, FileText, MoreVertical, ChevronDown, Calendar, Gift, CheckCircle } from 'lucide-react';
+import { Users, Plus, Edit, Trash2, X, Save, Phone, Mail, MessageCircle, Link as LinkIcon, Copy, Check, ArrowLeft, AlertCircle, MessageSquare, FileText, MoreVertical, Calendar, Gift } from 'lucide-react';
+import { calcularFechaRonda, calcularNumeroAutomaticoCumpleanos, obtenerRondaActualCumpleanos, calcularRondaActual } from '../utils/tandaCalculos';
 
 const API_BASE_URL = 'https://9l2vrevqm1.execute-api.us-east-1.amazonaws.com/dev';
-const BASE_URL_ESTATIC_WEB = "https://app-tandamx.s3.us-east-1.amazonaws.com"
+const BASE_URL_ESTATIC_WEB = "https://app-tandamx.s3.us-east-1.amazonaws.com";
 
 export default function ParticipantesView({ tandaData, setTandaData, loadAdminData, onBack }) {
+  // Estados
   const [showModal, setShowModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -30,131 +33,44 @@ export default function ParticipantesView({ tandaData, setTandaData, loadAdminDa
     fechaCumpleaños: ''
   });
 
-  // Verificar si es tanda cumpleañera
   const esCumpleañera = tandaData?.frecuencia === 'cumpleaños';
 
-  function ultimoDiaDelMes(fecha) {
-    return new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0);
-  }
-  
-  function calcularFechaRonda(indice, fechaCumpleaños = null) {
-    // Para tandas cumpleañeras, usar la fecha de cumpleaños del participante
-    if (esCumpleañera && fechaCumpleaños) {
-      console.log('fecha cumple (',indice,'): ',fechaCumpleaños)
-      const [y, m, d] = fechaCumpleaños.split("-");
-      const fechaCumplelocal = new Date(y, m - 1, d);
-      return new Date(fechaCumplelocal);
-    }
-
-    //console.log('fecha inicio (',indice,'): ',tandaData.fechaInicio)
-    const fecha = new Date(tandaData.fechaInicio);
-    const frecuencia = tandaData.frecuencia;
-
-    
-    if (frecuencia === "semanal") {
-      if (indice === 1) {
-        fecha.setDate(fecha.getDate());
-      } else {
-        fecha.setDate(fecha.getDate() + 7 * (indice - 1));
-      }
-      fecha.setDate(fecha.getDate() + 1);
-      return fecha;
-    }
-
-    if (frecuencia === "mensual") {
-      fecha.setMonth(fecha.getMonth() + indice - 1);
-      fecha.setDate(fecha.getDate() + 1);
-      return fecha;
-    }
-
-    if (frecuencia === "quincenal") {
-      let temp = new Date(fecha);
-      let diaInicial = temp.getDate();
-      let esFinDeMes = diaInicial > 15;
-
-      for (let i = 1; i <= indice; i++) {
-        if (esFinDeMes) {
-          temp = ultimoDiaDelMes(temp);
-        } else {
-          temp.setDate(15);
-        }
-
-        if (i < indice) {
-          if (esFinDeMes) {
-            temp.setDate(1);
-            temp.setMonth(temp.getMonth() + 1);
-            temp.setDate(15);
-          } else {
-            temp = ultimoDiaDelMes(temp);
-          }
-          esFinDeMes = !esFinDeMes;
-        }
-      }
-      return temp;
-    }
-    //console.log('fecha calculada(',indice,'): ',fecha)
-    return fecha;
-    
-  }
-
-  // Función para calcular el próximo número automático en tanda cumpleañera
-  const calcularNumeroAutomatico = (nuevaFechaCumpleaños) => {
-    if (!esCumpleañera) return 1;
-    
-    const participantes = tandaData.participantes || [];
-    
-    // Si no hay participantes, es el número 1
-    if (participantes.length === 0) return 1;
-
-    // Crear lista con todos los participantes más el nuevo
-    const todosLosParticipantes = [
-      ...participantes.map(p => ({
-        fechaCumpleaños: new Date(p.fechaCumpleaños),
-        fechaRegistro: new Date(p.fechaRegistro || p.createdAt),
-        participanteId: p.participanteId
-      })),
-      {
-        fechaCumpleaños: new Date(nuevaFechaCumpleaños),
-        fechaRegistro: new Date(), // Fecha actual para el nuevo
-        esNuevo: true
-      }
-    ];
-
-    // Ordenar por fecha de cumpleaños (mes y día), luego por fecha de registro
-    todosLosParticipantes.sort((a, b) => {
-      // Comparar solo mes y día del cumpleaños
-      const mesA = a.fechaCumpleaños.getMonth();
-      const diaA = a.fechaCumpleaños.getDate();
-      const mesB = b.fechaCumpleaños.getMonth();
-      const diaB = b.fechaCumpleaños.getDate();
-
-      if (mesA !== mesB) {
-        return mesA - mesB;
-      }
-      if (diaA !== diaB) {
-        return diaA - diaB;
-      }
-      
-      // Si tienen el mismo cumpleaños, ordenar por fecha de registro
-      return a.fechaRegistro - b.fechaRegistro;
-    });
-
-    // Encontrar la posición del nuevo participante
-    const posicion = todosLosParticipantes.findIndex(p => p.esNuevo);
-    return posicion + 1;
-  };
+  // ====================================
+  // FUNCIONES AUXILIARES
+  // ====================================
   
   const numerosDisponibles = () => {
-    if (!tandaData) return [];
-    
-    // Para tandas cumpleañeras, no hay números "disponibles" para seleccionar
-    if (esCumpleañera) return [];
+    if (!tandaData || esCumpleañera) return [];
     
     const numerosOcupados = tandaData.participantes?.map(p => p.numeroAsignado) || [];
     const todos = Array.from({ length: tandaData.totalRondas }, (_, i) => i + 1);
     return todos.filter(n => !numerosOcupados.includes(n));
   };
 
+  const ordenarParticipantes = (participantes) => {
+    if (esCumpleañera) {
+      return [...participantes].sort((a, b) => {
+        const fechaA = new Date(a.fechaCumpleaños);
+        const fechaB = new Date(b.fechaCumpleaños);
+        
+        const mesA = fechaA.getMonth();
+        const diaA = fechaA.getDate();
+        const mesB = fechaB.getMonth();
+        const diaB = fechaB.getDate();
+
+        if (mesA !== mesB) return mesA - mesB;
+        if (diaA !== diaB) return diaA - diaB;
+        
+        return new Date(a.createdAt) - new Date(b.createdAt);
+      });
+    }
+    return [...participantes].sort((a, b) => a.numeroAsignado - b.numeroAsignado);
+  };
+
+  // ====================================
+  // API CALLS
+  // ====================================
+  
   const verificarLinkVigente = async () => {
     try {
       const token = localStorage.getItem('authToken');
@@ -162,19 +78,15 @@ export default function ParticipantesView({ tandaData, setTandaData, loadAdminDa
         `${API_BASE_URL}/tandas/${tandaData.tandaId}/registro-link/activo`,
         {
           method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
+          headers: { 'Authorization': `Bearer ${token}` }
         }
       );
 
       const data = await response.json();
       
       if (response.ok && data.success && data.data) {
-        const baseUrl = BASE_URL_ESTATIC_WEB;
-        // 🆕 CORREGIDO - Usar la ruta correcta según el tipo de tanda
         const ruta = esCumpleañera ? 'registro-cumple' : 'registro';
-        const link = `${baseUrl}/index.html#/${ruta}/${data.data.token}`;
+        const link = `${BASE_URL_ESTATIC_WEB}/index.html#/${ruta}/${data.data.token}`;
         
         setLinkRegistro({
           url: link,
@@ -212,9 +124,7 @@ export default function ParticipantesView({ tandaData, setTandaData, loadAdminDa
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({
-            duracionHoras
-          })
+          body: JSON.stringify({ duracionHoras })
         }
       );
 
@@ -225,10 +135,8 @@ export default function ParticipantesView({ tandaData, setTandaData, loadAdminDa
       }
 
       if (data.success) {
-        const baseUrl = BASE_URL_ESTATIC_WEB;
-        // 🆕 Ruta diferente según el tipo
         const ruta = esCumpleañera ? 'registro-cumple' : 'registro';
-        const link = `${baseUrl}/index.html#/${ruta}/${data.data.token}`;
+        const link = `${BASE_URL_ESTATIC_WEB}/index.html#/${ruta}/${data.data.token}`;
         setLinkRegistro({
           url: link,
           token: data.data.token,
@@ -242,144 +150,6 @@ export default function ParticipantesView({ tandaData, setTandaData, loadAdminDa
     } finally {
       setLoading(false);
     }
-  };
-
-  const copiarLink = () => {
-    if (linkRegistro?.url) {
-      navigator.clipboard.writeText(linkRegistro.url);
-      setLinkCopiado(true);
-      setTimeout(() => setLinkCopiado(false), 2000);
-    }
-  };
-
-  const compartirWhatsApp = () => {
-    if (!linkRegistro?.url) return;
-    
-    let mensaje = '';
-    
-    if (esCumpleañera) {
-      mensaje = `🎂 *¡Únete a nuestra Tanda Cumpleañera!*
-
-📋 *${tandaData.nombre}*
-
-💰 Aportación por persona: $${tandaData.montoPorRonda?.toLocaleString()}
-👥 Total de participantes: ${tandaData.totalRondas}
-🎁 Recibirás en tu cumpleaños: $${(tandaData.montoPorRonda * (tandaData.totalRondas - 1))?.toLocaleString()}
-
-🔗 *Regístrate aquí:*
-${linkRegistro.url}
-
-✨ *Instrucciones:*
-1. Haz clic en el link
-2. Ingresa tu nombre y teléfono
-3. *IMPORTANTE:* Ingresa tu fecha de cumpleaños
-4. Tu número se asignará automáticamente según tu fecha
-5. ¡Listo! Recibirás el dinero en tu cumpleaños
-
-⏱️ *Link válido por ${linkRegistro.duracionHoras} horas*`;
-    } else {
-      const fechaInicio = new Date(tandaData.fechaInicio);
-      fechaInicio.setDate(fechaInicio.getDate() + 1);
-      mensaje = `🎉 *¡Únete a nuestra Tanda!*
-
-📋 *${tandaData.nombre}*
-
-💰 Monto por ronda: $${tandaData.montoPorRonda?.toLocaleString()}
-📅 Total de rondas: ${tandaData.totalRondas}
-⏰ Frecuencia: ${tandaData.frecuencia}
-📅 Fecha Inicio: ${fechaInicio?.toLocaleDateString('es-MX', { 
-                              weekday: 'long',
-                              day: 'numeric', 
-                              month: 'long',
-                              year: 'numeric'
-                            })}
-
-🔗 *Regístrate aquí:*
-${linkRegistro.url}
-
-✨ *Instrucciones:*
-1. Haz clic en el link
-2. Ingresa tu nombre y teléfono
-3. Selecciona tu(s) número(s) favorito(s)
-4. ¡Listo! Serás parte de la tanda
-
-⏱️ *Link válido por ${linkRegistro.duracionHoras} horas*`;
-    }
-
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(mensaje)}`;
-    window.open(whatsappUrl, '_blank');
-  };
-
-  const generarLinkPublico = () => {
-    const baseUrl = BASE_URL_ESTATIC_WEB;
-    return `${baseUrl}/index.html?tanda=${tandaData.tandaId}`;
-  };
-
-  const enviarMensajePagoRealizado = (participante) => {
-    const totalRecibir = esCumpleañera 
-      ? tandaData.montoPorRonda * (tandaData.totalRondas - 1)
-      : tandaData.montoPorRonda * tandaData.totalRondas;
-
-    const mensaje = `¡Hola ${participante.nombre}! 👋
-
-✅ *Confirmación de Pago*
-
-Tu pago de la tanda *${tandaData.nombre}* se ha realizado correctamente.
-
-💰 *Monto a recibir:* $${totalRecibir.toLocaleString()}
-
-¡Gracias por tu confianza! 🎉`;
-
-    setParticipanteSeleccionado(participante);
-    setTipoMensaje('realizado');
-    setMensajeTexto(mensaje);
-    setShowMensajeModal(true);
-  };
-
-  const enviarMensajePagoPendiente = (participante) => {
-    const linkPublico = generarLinkPublico();
-    const rondaActual = calcularRondaActual();
-    
-    const mensaje = `¡Hola ${participante.nombre}! 👋
-
-📢 *Recordatorio de Pago*
-
-Te recordamos que tienes un pago pendiente en la tanda *${tandaData.nombre}*.
-
-📋 *Detalles:*
-- Ronda actual: ${rondaActual}
-- Monto por ronda: $${tandaData.montoPorRonda.toLocaleString()}
-
-Por favor, realiza tu pago lo antes posible para mantenernos al día.
-
-Puedes ver más detalles en:
-${linkPublico}
-
-¡Gracias por tu atención! 🙏`;
-
-    setParticipanteSeleccionado(participante);
-    setTipoMensaje('pendiente');
-    setMensajeTexto(mensaje);
-    setShowMensajeModal(true);
-  };
-
-  const confirmarEnvioWhatsApp = () => {
-    if (!participanteSeleccionado || !mensajeTexto) return;
-    
-    const telefono = participanteSeleccionado.telefono.replace(/\D/g, '');
-    const whatsappUrl = `https://wa.me/521${telefono}?text=${encodeURIComponent(mensajeTexto)}`;
-    window.open(whatsappUrl, '_blank');
-    
-    setShowMensajeModal(false);
-    setParticipanteSeleccionado(null);
-    setMensajeTexto('');
-    setTipoMensaje(null);
-  };
-
-  const abrirComentarioModal = (participante) => {
-    setParticipanteSeleccionado(participante);
-    setComentarioTexto(participante.comentarios || '');
-    setShowComentarioModal(true);
   };
 
   const guardarComentario = async () => {
@@ -429,19 +199,301 @@ ${linkPublico}
     }
   };
 
-  const calcularRondaActual = () => {
-    if (!tandaData.fechaInicio) return 1;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      if (esCumpleañera && !formData.fechaCumpleaños) {
+        throw new Error('La fecha de cumpleaños es obligatoria para tandas cumpleañeras');
+      }
+
+      const token = localStorage.getItem('authToken');
+      
+      if (editingParticipante) {
+        // EDITAR EXISTENTE
+        const requestBody = {
+          nombre: formData.nombre,
+          telefono: formData.telefono,
+          email: formData.email || undefined,
+          numeroAsignado: formData.numerosAsignados[0]
+        };
+
+        if (esCumpleañera) {
+          requestBody.fechaCumpleaños = formData.fechaCumpleaños;
+        }
+
+        const response = await fetch(
+          `${API_BASE_URL}/tandas/${tandaData.tandaId}/participantes/${editingParticipante.participanteId}`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(requestBody)
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error?.message || 'Error al actualizar participante');
+        }
+
+        await loadAdminData();
+        closeModal();
+      } else {
+        // CREAR NUEVO
+        if (esCumpleañera) {
+          const numeroAutomatico = calcularNumeroAutomaticoCumpleanos(tandaData, formData.fechaCumpleaños);
+          
+          const response = await fetch(`${API_BASE_URL}/tandas/${tandaData.tandaId}/participantes`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              nombre: formData.nombre,
+              telefono: formData.telefono,
+              email: formData.email || undefined,
+              numeroAsignado: numeroAutomatico,
+              fechaCumpleaños: formData.fechaCumpleaños
+            })
+          });
+
+          const data = await response.json();
+          
+          if (!response.ok) {
+            throw new Error(data.error?.message || 'Error al crear participante');
+          }
+
+          await loadAdminData();
+          closeModal();
+        } else {
+          // Tanda normal - múltiples números
+          const maxNumeros = Math.floor(tandaData.totalRondas * 0.5);
+          
+          if (formData.numerosAsignados.length > maxNumeros) {
+            throw new Error(`Solo puedes seleccionar hasta ${maxNumeros} números (50% del total)`);
+          }
+
+          if (formData.numerosAsignados.length === 0) {
+            throw new Error('Debes seleccionar al menos un número');
+          }
+
+          const promesas = formData.numerosAsignados.map(numeroAsignado => 
+            fetch(`${API_BASE_URL}/tandas/${tandaData.tandaId}/participantes`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                nombre: formData.nombre,
+                telefono: formData.telefono,
+                email: formData.email || undefined,
+                numeroAsignado: parseInt(numeroAsignado)
+              })
+            })
+          );
+
+          const respuestas = await Promise.all(promesas);
+          
+          for (const response of respuestas) {
+            const data = await response.json();
+            if (!response.ok) {
+              throw new Error(data.error?.message || 'Error al crear participante');
+            }
+          }
+
+          await loadAdminData();
+          closeModal();
+        }
+      }
+    } catch (error) {
+      console.error('Error guardando participante:', error);
+      setError(error.message || 'Error al guardar participante');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!participanteAEliminar) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(
+        `${API_BASE_URL}/tandas/${tandaData.tandaId}/participantes/${participanteAEliminar.participanteId}`,
+        {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error?.message || 'Error al eliminar participante');
+      }
+
+      if (data.success) {
+        setShowDeleteModal(false);
+        setParticipanteAEliminar(null);
+        await loadAdminData();
+      }
+    } catch (error) {
+      console.error('Error eliminando participante:', error);
+      setError(error.message || 'Error al eliminar participante');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ====================================
+  // HANDLERS
+  // ====================================
+  
+  const copiarLink = () => {
+    if (linkRegistro?.url) {
+      navigator.clipboard.writeText(linkRegistro.url);
+      setLinkCopiado(true);
+      setTimeout(() => setLinkCopiado(false), 2000);
+    }
+  };
+
+  const compartirWhatsApp = () => {
+    if (!linkRegistro?.url) return;
     
-    const fechaInicio = new Date(tandaData.fechaInicio);
-    const fechaActual = new Date();
-    const diasTranscurridos = Math.floor((fechaActual - fechaInicio) / (1000 * 60 * 60 * 24));
+    let mensaje = '';
     
-    let diasPorRonda = 7;
-    if (tandaData.frecuencia === 'quincenal') diasPorRonda = 15;
-    else if (tandaData.frecuencia === 'mensual') diasPorRonda = 30;
+    if (esCumpleañera) {
+      mensaje = `🎂 *¡Únete a nuestra Tanda Cumpleañera!*
+
+📋 *${tandaData.nombre}*
+
+💰 Aportación por persona: $${tandaData.montoPorRonda?.toLocaleString()}
+👥 Total de participantes: ${tandaData.totalRondas}
+🎁 Recibirás en tu cumpleaños: $${(tandaData.montoPorRonda * (tandaData.totalRondas - 1))?.toLocaleString()}
+
+🔗 *Regístrate aquí:*
+${linkRegistro.url}
+
+✨ *Instrucciones:*
+1. Haz clic en el link
+2. Ingresa tu nombre y teléfono
+3. *IMPORTANTE:* Ingresa tu fecha de cumpleaños
+4. Tu número se asignará automáticamente según tu fecha
+5. ¡Listo! Recibirás el dinero en tu cumpleaños
+
+⏱️ *Link válido por ${linkRegistro.duracionHoras} horas*`;
+    } else {
+      const fechaInicio = new Date(tandaData.fechaInicio + 'T00:00:00');
+      mensaje = `🎉 *¡Únete a nuestra Tanda!*
+
+📋 *${tandaData.nombre}*
+
+💰 Monto por ronda: $${tandaData.montoPorRonda?.toLocaleString()}
+📅 Total de rondas: ${tandaData.totalRondas}
+⏰ Frecuencia: ${tandaData.frecuencia}
+📅 Fecha Inicio: ${fechaInicio?.toLocaleDateString('es-MX', { 
+                              weekday: 'long',
+                              day: 'numeric', 
+                              month: 'long',
+                              year: 'numeric'
+                            })}
+
+🔗 *Regístrate aquí:*
+${linkRegistro.url}
+
+✨ *Instrucciones:*
+1. Haz clic en el link
+2. Ingresa tu nombre y teléfono
+3. Selecciona tu(s) número(s) favorito(s)
+4. ¡Listo! Serás parte de la tanda
+
+⏱️ *Link válido por ${linkRegistro.duracionHoras} horas*`;
+    }
+
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(mensaje)}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
+  const generarLinkPublico = () => {
+    return `${BASE_URL_ESTATIC_WEB}/index.html?tanda=${tandaData.tandaId}`;
+  };
+
+  const enviarMensajePagoRealizado = (participante) => {
+    const totalRecibir = esCumpleañera 
+      ? tandaData.montoPorRonda * (tandaData.totalRondas - 1)
+      : tandaData.montoPorRonda * tandaData.totalRondas;
+
+    const mensaje = `¡Hola ${participante.nombre}! 👋
+
+✅ *Confirmación de Pago*
+
+Tu pago de la tanda *${tandaData.nombre}* se ha realizado correctamente.
+
+💰 *Monto a recibir:* $${totalRecibir.toLocaleString()}
+
+¡Gracias por tu confianza! 🎉`;
+
+    setParticipanteSeleccionado(participante);
+    setTipoMensaje('realizado');
+    setMensajeTexto(mensaje);
+    setShowMensajeModal(true);
+  };
+
+  const enviarMensajePagoPendiente = (participante) => {
+    const linkPublico = generarLinkPublico();
+    const rondaActual = calcularRondaActual(tandaData);
     
-    const rondaCalculada = Math.floor(diasTranscurridos / diasPorRonda) + 1;
-    return Math.min(Math.max(1, rondaCalculada), tandaData.totalRondas);
+    const mensaje = `¡Hola ${participante.nombre}! 👋
+
+📢 *Recordatorio de Pago*
+
+Te recordamos que tienes un pago pendiente en la tanda *${tandaData.nombre}*.
+
+📋 *Detalles:*
+- Ronda actual: ${rondaActual}
+- Monto por ronda: $${tandaData.montoPorRonda.toLocaleString()}
+
+Por favor, realiza tu pago lo antes posible para mantenernos al día.
+
+Puedes ver más detalles en:
+${linkPublico}
+
+¡Gracias por tu atención! 🙏`;
+
+    setParticipanteSeleccionado(participante);
+    setTipoMensaje('pendiente');
+    setMensajeTexto(mensaje);
+    setShowMensajeModal(true);
+  };
+
+  const confirmarEnvioWhatsApp = () => {
+    if (!participanteSeleccionado || !mensajeTexto) return;
+    
+    const telefono = participanteSeleccionado.telefono.replace(/\D/g, '');
+    const whatsappUrl = `https://wa.me/521${telefono}?text=${encodeURIComponent(mensajeTexto)}`;
+    window.open(whatsappUrl, '_blank');
+    
+    setShowMensajeModal(false);
+    setParticipanteSeleccionado(null);
+    setMensajeTexto('');
+    setTipoMensaje(null);
+  };
+
+  const abrirComentarioModal = (participante) => {
+    setParticipanteSeleccionado(participante);
+    setComentarioTexto(participante.comentarios || '');
+    setShowComentarioModal(true);
   };
 
   const openModal = (participante = null) => {
@@ -479,172 +531,6 @@ ${linkPublico}
       fechaCumpleaños: ''
     });
     setError(null);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Validación para tanda cumpleañera
-      if (esCumpleañera && !formData.fechaCumpleaños) {
-        throw new Error('La fecha de cumpleaños es obligatoria para tandas cumpleañeras');
-      }
-
-      const token = localStorage.getItem('authToken');
-      
-      if (editingParticipante) {
-        const url = `${API_BASE_URL}/tandas/${tandaData.tandaId}/participantes/${editingParticipante.participanteId}`;
-        
-        const requestBody = {
-          nombre: formData.nombre,
-          telefono: formData.telefono,
-          email: formData.email || undefined,
-          numeroAsignado: formData.numerosAsignados[0]
-        };
-
-        // Agregar fecha de cumpleaños solo si es tanda cumpleañera
-        if (esCumpleañera) {
-          requestBody.fechaCumpleaños = formData.fechaCumpleaños;
-        }
-
-        const response = await fetch(url, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify(requestBody)
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error?.message || 'Error al actualizar participante');
-        }
-
-        if (data.success) {
-          await loadAdminData();
-          closeModal();
-        }
-      } else {
-        // CREAR NUEVO PARTICIPANTE
-        if (esCumpleañera) {
-          // Para tanda cumpleañera: calcular número automáticamente
-          const numeroAutomatico = calcularNumeroAutomatico(formData.fechaCumpleaños);
-          
-          const requestBody = {
-            nombre: formData.nombre,
-            telefono: formData.telefono,
-            email: formData.email || undefined,
-            numeroAsignado: numeroAutomatico,
-            fechaCumpleaños: formData.fechaCumpleaños
-          };
-
-          const response = await fetch(`${API_BASE_URL}/tandas/${tandaData.tandaId}/participantes`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(requestBody)
-          });
-
-          const data = await response.json();
-          
-          if (!response.ok) {
-            throw new Error(data.error?.message || 'Error al crear participante');
-          }
-
-          await loadAdminData();
-          closeModal();
-        } else {
-          // Para tanda normal: selección múltiple de números
-          const maxNumeros = Math.floor(tandaData.totalRondas * 0.5);
-          
-          if (formData.numerosAsignados.length > maxNumeros) {
-            throw new Error(`Solo puedes seleccionar hasta ${maxNumeros} números (50% del total)`);
-          }
-
-          if (formData.numerosAsignados.length === 0) {
-            throw new Error('Debes seleccionar al menos un número');
-          }
-
-          const promesas = formData.numerosAsignados.map(numeroAsignado => {
-            const requestBody = {
-              nombre: formData.nombre,
-              telefono: formData.telefono,
-              email: formData.email || undefined,
-              numeroAsignado: parseInt(numeroAsignado)
-            };
-
-            return fetch(`${API_BASE_URL}/tandas/${tandaData.tandaId}/participantes`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-              },
-              body: JSON.stringify(requestBody)
-            });
-          });
-
-          const respuestas = await Promise.all(promesas);
-          
-          for (const response of respuestas) {
-            const data = await response.json();
-            if (!response.ok) {
-              throw new Error(data.error?.message || 'Error al crear participante');
-            }
-          }
-
-          await loadAdminData();
-          closeModal();
-        }
-      }
-    } catch (error) {
-      console.error('Error guardando participante:', error);
-      setError(error.message || 'Error al guardar participante');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!participanteAEliminar) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch(
-        `${API_BASE_URL}/tandas/${tandaData.tandaId}/participantes/${participanteAEliminar.participanteId}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error?.message || 'Error al eliminar participante');
-      }
-
-      if (data.success) {
-        setShowDeleteModal(false);
-        setParticipanteAEliminar(null);
-        await loadAdminData();
-      }
-    } catch (error) {
-      console.error('Error eliminando participante:', error);
-      setError(error.message || 'Error al eliminar participante');
-    } finally {
-      setLoading(false);
-    }
   };
 
   const openDeleteModal = (participante) => {
@@ -685,82 +571,22 @@ ${linkPublico}
     });
   };
 
+  // ====================================
+  // RENDER
+  // ====================================
+  
   if (!tandaData) return null;
 
   const participantes = tandaData.participantes || [];
   const disponibles = numerosDisponibles();
-
-  // Ordenar participantes por número asignado
-  const participantesOrdenados = esCumpleañera
-    ? [...participantes].sort((a, b) => {
-        // Para cumpleañera, ordenar por fecha de cumpleaños
-        const fechaA = new Date(a.fechaCumpleaños);
-        const fechaB = new Date(b.fechaCumpleaños);
-        
-        const mesA = fechaA.getMonth();
-        const diaA = fechaA.getDate();
-        const mesB = fechaB.getMonth();
-        const diaB = fechaB.getDate();
-
-        if (mesA !== mesB) return mesA - mesB;
-        if (diaA !== diaB) return diaA - diaB;
-        
-        // Si tienen mismo cumpleaños, por fecha de registro
-        return new Date(a.createdAt) - new Date(b.createdAt);
-      })
-    : [...participantes].sort((a, b) => a.numeroAsignado - b.numeroAsignado);
-
-  const obtenerRondaActualCumpleanos = (tanda) => {
-    // Si no es cumpleañera, retornar null
-    if (tanda.frecuencia !== 'cumpleaños' || !tanda.participantes || tanda.participantes.length === 0) {
-      return null;
-    }
-
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-    
-    // Ordenar participantes por número asignado
-    const participantesOrdenados = [...tanda.participantes].sort((a, b) => a.numeroAsignado - b.numeroAsignado);
-    
-    // Encontrar el número actual (el que ya pasó su cumpleaños o es hoy)
-    let numeroActual = null;
-    
-    for (const p of participantesOrdenados) {
-      if (p.fechaCumpleaños) {
-        const fechaCumple = new Date(p.fechaCumpleaños + 'T00:00:00');
-        fechaCumple.setHours(0, 0, 0, 0);
-        
-        if (fechaCumple <= hoy) {
-          numeroActual = p.numeroAsignado;
-        } else {
-          break; // Ya encontramos el último que cumplió
-        }
-      }
-    }
-    
-    return numeroActual;
-  };
+  const participantesOrdenados = ordenarParticipantes(participantes);
+  const numeroActualTanda = esCumpleañera 
+    ? obtenerRondaActualCumpleanos(tandaData)
+    : calcularRondaActual(tandaData);
 
   return (
     <div className="space-y-6">
-      {/* Mensaje cuando cupo está completo
-      {esCumpleañera && participantes.length >= tandaData.totalRondas && (
-        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
-              <CheckCircle className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <p className="font-bold text-green-800">¡Tanda Completa! 🎉</p>
-              <p className="text-sm text-green-700">
-                Ya se han registrado todos los {tandaData.totalRondas} participantes
-              </p>
-            </div>
-          </div>
-        </div>
-      )}*/}
-      
-      {/* Header con navegación - AJUSTADO */}
+      {/* Header con navegación */}
       <div className="bg-white rounded-2xl shadow-lg p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4">
@@ -786,7 +612,6 @@ ${linkPublico}
             </div>
           </div>
           
-          {/* Botón Agregar - DESHABILITADO cuando cupo completo */}
           <button
             onClick={() => openModal()}
             disabled={participantes.length >= tandaData.totalRondas}
@@ -809,338 +634,277 @@ ${linkPublico}
         </p>
       </div>
 
-      {/* Tabla - Desktop y Mobile */}
-<div className="overflow-x-auto">
-  <table className="w-full">
-    <thead className="bg-gray-50 border-b-2 border-gray-200">
-      <tr>
-        {/* Desktop headers */}
-        <th className="hidden md:table-cell px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase">
-          #
-        </th>
-        <th className="hidden md:table-cell px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase">
-          Participante
-        </th>
-        <th className="hidden md:table-cell px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase">
-          Contacto
-        </th>
-        {esCumpleañera && (
-          <th className="hidden md:table-cell px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase">
-            Cumpleaños
-          </th>
-        )}
-        <th className="hidden md:table-cell px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase">
-          Comentarios
-        </th>
-        <th className="hidden md:table-cell px-6 py-4 text-right text-xs font-bold text-gray-600 uppercase">
-          Acciones
-        </th>
-        
-        {/* Mobile header */}
-        <th className="md:hidden px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
-          Participantes
-        </th>
-      </tr>
-    </thead>
-    <tbody className="divide-y divide-gray-200">
-      {participantesOrdenados.map((participante, index) => {
-        // 🆕 Determinar número actual según tipo de tanda
-        const numeroActualTanda = esCumpleañera 
-          ? obtenerRondaActualCumpleanos(tandaData)
-          : tandaData.rondaActual;
-        
-        const esProximo = participante.numeroAsignado === numeroActualTanda;
-        const fechaPago = calcularFechaRonda(participante.numeroAsignado, participante.fechaCumpleaños);
-        const menuEstaAbierto = menuAbierto === participante.participanteId;
-
-        // Calcular si es uno de los últimos 3 elementos
-        const esDeLosFinal = index >= participantesOrdenados.length - 3;
-
-        return (
-          <tr 
-            key={participante.participanteId}
-            className={`hover:bg-gray-50 transition-colors ${
-              esProximo ? 'bg-green-50' : ''
-            }`}
-          >
-            {/* ========== DESKTOP VIEW ========== */}
-            <td className="hidden md:table-cell px-6 py-4">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg shadow-md ${
-                esProximo 
-                  ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white' 
-                  : 'bg-gradient-to-br from-blue-600 to-blue-800 text-white'
-              }`}>
-                {participante.numeroAsignado}
-              </div>
-            </td>
-            <td className="hidden md:table-cell px-6 py-4">
-              <div className="font-semibold text-gray-800">
-                {participante.nombre}
-              </div>
-              {esProximo && (
-                <span className="inline-flex items-center gap-1 text-xs text-green-600 font-bold mt-1">
-                  ← Turno actual
-                </span>
+      {/* Tabla */}
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b-2 border-gray-200">
+            <tr>
+              <th className="hidden md:table-cell px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase">#</th>
+              <th className="hidden md:table-cell px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase">Participante</th>
+              <th className="hidden md:table-cell px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase">Contacto</th>
+              {esCumpleañera && (
+                <th className="hidden md:table-cell px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase">Cumpleaños</th>
               )}
-              {fechaPago && (
-                <div className="text-xs text-blue-600 font-semibold mt-1">
-                  {esCumpleañera ? '🎂' : '📅'} {fechaPago.toLocaleDateString('es-MX', { 
-                    weekday: 'short', 
-                    day: 'numeric', 
-                    month: 'short',
-                    year: esCumpleañera ? undefined : 'numeric'
-                  })}
-                </div>
-              )}
-            </td>
-            <td className="hidden md:table-cell px-6 py-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Phone className="w-4 h-4" />
-                  {participante.telefono}
-                </div>
-                {participante.email && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Mail className="w-4 h-4" />
-                    {participante.email}
-                  </div>
-                )}
-              </div>
-            </td>
-            {esCumpleañera && (
-              <td className="hidden md:table-cell px-6 py-4">
-                {participante.fechaCumpleaños ? (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Calendar className="w-4 h-4 text-blue-600" />
-                    <span className="font-semibold text-blue-600">
-                      {fechaPago.toLocaleDateString('es-MX', { 
-                        day: 'numeric', 
-                        month: 'long'
-                      })}
-                    </span>
-                  </div>
-                ) : (
-                  <span className="text-xs text-gray-400 italic">No registrado</span>
-                )}
-              </td>
-            )}
-            <td className="hidden md:table-cell px-6 py-4">
-              {participante.comentarios ? (
-                <button
-                  onClick={() => abrirComentarioModal(participante)}
-                  className="flex items-center gap-2 text-sm text-gray-700 hover:text-blue-600 transition-colors max-w-xs"
-                >
-                  <FileText className="w-4 h-4 flex-shrink-0" />
-                  <span className="truncate">{participante.comentarios}</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => abrirComentarioModal(participante)}
-                  className="text-sm text-gray-400 hover:text-blue-600 transition-colors"
-                >
-                  Agregar nota...
-                </button>
-              )}
-            </td>
-            <td className="hidden md:table-cell px-6 py-4">
-              <div className="flex items-center justify-end gap-2 flex-nowrap">
-                <button
-                  onClick={() => enviarMensajePagoRealizado(participante)}
-                  className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                  title="Confirmar pago"
-                >
-                  <MessageCircle className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => enviarMensajePagoPendiente(participante)}
-                  className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                  title="Recordar pago"
-                >
-                  <MessageCircle className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => abrirComentarioModal(participante)}
-                  className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                  title="Comentarios"
-                >
-                  <MessageSquare className="w-5 h-5" />
-                </button>
-                <div className="h-6 w-px bg-gray-300 mx-1"></div>
-                <button
-                  onClick={() => openModal(participante)}
-                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                  title="Editar"
-                >
-                  <Edit className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => openDeleteModal(participante)}
-                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  title="Eliminar"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
-              </div>
-            </td>
+              <th className="hidden md:table-cell px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase">Comentarios</th>
+              <th className="hidden md:table-cell px-6 py-4 text-right text-xs font-bold text-gray-600 uppercase">Acciones</th>
+              <th className="md:hidden px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Participantes</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {participantesOrdenados.map((participante, index) => {
+              const esProximo = participante.numeroAsignado === numeroActualTanda;
+              const fechaInicio = tandaData.fechaInicio ? new Date(tandaData.fechaInicio + 'T00:00:00') : null;
+              const fechaPago = fechaInicio ? calcularFechaRonda(fechaInicio, participante.numeroAsignado, tandaData.frecuencia, esCumpleañera, participante.fechaCumpleaños) : null;
+              const menuEstaAbierto = menuAbierto === participante.participanteId;
+              const esDeLosFinal = index >= participantesOrdenados.length - 3;
 
-            {/* ========== MOBILE VIEW ========== */}
-            <td className="md:hidden px-4 py-3">
-              <div className="flex items-start gap-3">
-                {/* Badge número */}
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm shadow-md flex-shrink-0 ${
-                  esProximo 
-                    ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white' 
-                    : 'bg-gradient-to-br from-blue-600 to-blue-800 text-white'
-                }`}>
-                  {participante.numeroAsignado}
-                </div>
-
-                {/* Info del participante */}
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-gray-800 text-sm mb-0.5">
-                    {participante.nombre}
-                  </div>
-                  <div className="flex items-center gap-1 text-xs text-gray-600 mb-1">
-                    <Phone className="w-3 h-3" />
-                    <span className="truncate">{participante.telefono}</span>
-                  </div>
-                  {esCumpleañera && participante.fechaCumpleaños && (
-                    <div className="flex items-center gap-1 text-xs text-blue-600 font-semibold mb-1">
-                      <Calendar className="w-3 h-3" />
-                      {new Date(participante.fechaCumpleaños + 'T00:00:00').toLocaleDateString('es-MX', { 
-                        day: 'numeric', 
-                        month: 'short'
-                      })}
+              return (
+                <tr 
+                  key={participante.participanteId}
+                  className={`hover:bg-gray-50 transition-colors ${esProximo ? 'bg-green-50' : ''}`}
+                >
+                  {/* DESKTOP VIEW */}
+                  <td className="hidden md:table-cell px-6 py-4">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg shadow-md ${
+                      esProximo 
+                        ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white' 
+                        : 'bg-gradient-to-br from-blue-600 to-blue-800 text-white'
+                    }`}>
+                      {participante.numeroAsignado}
                     </div>
-                  )}
-                  {!esCumpleañera && fechaPago && (
-                    <div className="text-xs text-blue-600 font-semibold">
-                      📅 {fechaPago.toLocaleDateString('es-MX', { 
-                        day: 'numeric', 
-                        month: 'short'
-                      })}
+                  </td>
+                  <td className="hidden md:table-cell px-6 py-4">
+                    <div className="font-semibold text-gray-800">
+                      {participante.nombre}
                     </div>
-                  )}
-                  {esProximo && (
-                    <span className="inline-block text-xs text-green-600 font-bold mt-1">
-                      ← Turno actual
-                    </span>
-                  )}
-                </div>
-
-                {/* Menú desplegable */}
-                <div className="relative flex-shrink-0">
-                  <button
-                    onClick={() => setMenuAbierto(menuEstaAbierto ? null : participante.participanteId)}
-                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    <MoreVertical className="w-5 h-5 text-gray-600" />
-                  </button>
-
-                  {/* Dropdown menu */}
-                  {menuEstaAbierto && (
-                    <>
-                      {/* Overlay para cerrar al hacer click fuera */}
-                      <div 
-                        className="fixed inset-0 z-10"
-                        onClick={() => setMenuAbierto(null)}
-                      ></div>
-
-                      {/* Menú con posición adaptativa */}
-                      <div 
-                        className={`absolute right-0 ${
-                          esDeLosFinal ? 'bottom-full mb-1' : 'top-full mt-1'
-                        } w-56 bg-white rounded-xl shadow-2xl border-2 border-gray-200 py-2 z-20 animate-fadeIn`}
-                      >
-                        <div className="px-3 py-2 border-b border-gray-200">
-                          <p className="text-xs font-bold text-gray-500 uppercase">Acciones</p>
-                        </div>
-
-                        {/* Mensajes - Con scroll interno */}
-                        <div className="px-2 py-1 max-h-80 overflow-y-auto">
-                          <button
-                            onClick={() => {
-                              enviarMensajePagoRealizado(participante);
-                              setMenuAbierto(null);
-                            }}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-green-50 rounded-lg transition-colors"
-                          >
-                            <MessageCircle className="w-4 h-4 text-green-600" />
-                            <div>
-                              <p className="font-semibold">Confirmar Pago</p>
-                              <p className="text-xs text-gray-500">Mensaje de pago realizado</p>
-                            </div>
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              enviarMensajePagoPendiente(participante);
-                              setMenuAbierto(null);
-                            }}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-amber-50 rounded-lg transition-colors"
-                          >
-                            <MessageCircle className="w-4 h-4 text-amber-600" />
-                            <div>
-                              <p className="font-semibold">Recordar Pago</p>
-                              <p className="text-xs text-gray-500">Enviar recordatorio</p>
-                            </div>
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              abrirComentarioModal(participante);
-                              setMenuAbierto(null);
-                            }}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-purple-50 rounded-lg transition-colors"
-                          >
-                            <MessageSquare className="w-4 h-4 text-purple-600" />
-                            <div>
-                              <p className="font-semibold">Comentarios</p>
-                              <p className="text-xs text-gray-500">
-                                {participante.comentarios ? 'Ver/editar notas' : 'Agregar nota'}
-                              </p>
-                            </div>
-                          </button>
-                        </div>
-
-                        <div className="h-px bg-gray-200 my-1"></div>
-
-                        {/* Gestión */}
-                        <div className="px-2 py-1">
-                          <button
-                            onClick={() => {
-                              openModal(participante);
-                              setMenuAbierto(null);
-                            }}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-blue-50 rounded-lg transition-colors"
-                          >
-                            <Edit className="w-4 h-4 text-blue-600" />
-                            <p className="font-semibold">Editar</p>
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              openDeleteModal(participante);
-                              setMenuAbierto(null);
-                            }}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4 text-red-600" />
-                            <p className="font-semibold">Eliminar</p>
-                          </button>
-                        </div>
+                    {esProximo && (
+                      <span className="inline-flex items-center gap-1 text-xs text-green-600 font-bold mt-1">
+                        ← Turno actual
+                      </span>
+                    )}
+                    {fechaPago && (
+                      <div className="text-xs text-blue-600 font-semibold mt-1">
+                        {esCumpleañera ? '🎂' : '📅'} {fechaPago.toLocaleDateString('es-MX', { 
+                          day: 'numeric', 
+                          month: 'short',
+                          year: esCumpleañera ? undefined : 'numeric'
+                        })}
                       </div>
-                    </>
+                    )}
+                  </td>
+                  <td className="hidden md:table-cell px-6 py-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Phone className="w-4 h-4" />
+                        {participante.telefono}
+                      </div>
+                      {participante.email && (
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <Mail className="w-4 h-4" />
+                          {participante.email}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  {esCumpleañera && (
+                    <td className="hidden md:table-cell px-6 py-4">
+                      {participante.fechaCumpleaños ? (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Calendar className="w-4 h-4 text-blue-600" />
+                          <span className="font-semibold text-blue-600">
+                            {fechaPago?.toLocaleDateString('es-MX', { 
+                              day: 'numeric', 
+                              month: 'long'
+                            })}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">No registrado</span>
+                      )}
+                    </td>
                   )}
-                </div>
-              </div>
-            </td>
-          </tr>
-        );
-      })}
-    </tbody>
-  </table>
-</div>
+                  <td className="hidden md:table-cell px-6 py-4">
+                    {participante.comentarios ? (
+                      <button
+                        onClick={() => abrirComentarioModal(participante)}
+                        className="flex items-center gap-2 text-sm text-gray-700 hover:text-blue-600 transition-colors max-w-xs"
+                      >
+                        <FileText className="w-4 h-4 flex-shrink-0" />
+                        <span className="truncate">{participante.comentarios}</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => abrirComentarioModal(participante)}
+                        className="text-sm text-gray-400 hover:text-blue-600 transition-colors"
+                      >
+                        Agregar nota...
+                      </button>
+                    )}
+                  </td>
+                  <td className="hidden md:table-cell px-6 py-4">
+                    <div className="flex items-center justify-end gap-2 flex-nowrap">
+                      <button
+                        onClick={() => enviarMensajePagoRealizado(participante)}
+                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                        title="Confirmar pago"
+                      >
+                        <MessageCircle className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => enviarMensajePagoPendiente(participante)}
+                        className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                        title="Recordar pago"
+                      >
+                        <MessageCircle className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => abrirComentarioModal(participante)}
+                        className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                        title="Comentarios"
+                      >
+                        <MessageSquare className="w-5 h-5" />
+                      </button>
+                      <div className="h-6 w-px bg-gray-300 mx-1"></div>
+                      <button
+                        onClick={() => openModal(participante)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Editar"
+                      >
+                        <Edit className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => openDeleteModal(participante)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Eliminar"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </td>
+
+                  {/* MOBILE VIEW - Solo mostrar el wrapper, el contenido completo es muy largo */}
+                  <td className="md:hidden px-4 py-3">
+                    <div className="flex items-start gap-3">
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm shadow-md flex-shrink-0 ${
+                        esProximo 
+                          ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white' 
+                          : 'bg-gradient-to-br from-blue-600 to-blue-800 text-white'
+                      }`}>
+                        {participante.numeroAsignado}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-gray-800 text-sm mb-0.5">
+                          {participante.nombre}
+                        </div>
+                        <div className="flex items-center gap-1 text-xs text-gray-600 mb-1">
+                          <Phone className="w-3 h-3" />
+                          <span className="truncate">{participante.telefono}</span>
+                        </div>
+                        {esCumpleañera && participante.fechaCumpleaños && fechaPago && (
+                          <div className="flex items-center gap-1 text-xs text-blue-600 font-semibold mb-1">
+                            <Calendar className="w-3 h-3" />
+                            {fechaPago.toLocaleDateString('es-MX', { 
+                              day: 'numeric', 
+                              month: 'short'
+                            })}
+                          </div>
+                        )}
+                        {!esCumpleañera && fechaPago && (
+                          <div className="text-xs text-blue-600 font-semibold">
+                            📅 {fechaPago.toLocaleDateString('es-MX', { 
+                              day: 'numeric', 
+                              month: 'short'
+                            })}
+                          </div>
+                        )}
+                        {esProximo && (
+                          <span className="inline-block text-xs text-green-600 font-bold mt-1">
+                            ← Turno actual
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Menú desplegable móvil */}
+                      <div className="relative flex-shrink-0">
+                        <button
+                          onClick={() => setMenuAbierto(menuEstaAbierto ? null : participante.participanteId)}
+                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                          <MoreVertical className="w-5 h-5 text-gray-600" />
+                        </button>
+
+                        {menuEstaAbierto && (
+                          <>
+                            <div 
+                              className="fixed inset-0 z-10"
+                              onClick={() => setMenuAbierto(null)}
+                            ></div>
+
+                            <div 
+                              className={`absolute right-0 ${
+                                esDeLosFinal ? 'bottom-full mb-1' : 'top-full mt-1'
+                              } w-56 bg-white rounded-xl shadow-2xl border-2 border-gray-200 py-2 z-20 animate-fadeIn`}
+                            >
+                              <div className="px-3 py-2 border-b border-gray-200">
+                                <p className="text-xs font-bold text-gray-500 uppercase">Acciones</p>
+                              </div>
+
+                              <div className="px-2 py-1 max-h-80 overflow-y-auto">
+                                {[
+                                  { action: () => enviarMensajePagoRealizado(participante), icon: MessageCircle, color: 'green', label: 'Confirmar Pago', desc: 'Mensaje de pago realizado' },
+                                  { action: () => enviarMensajePagoPendiente(participante), icon: MessageCircle, color: 'amber', label: 'Recordar Pago', desc: 'Enviar recordatorio' },
+                                  { action: () => abrirComentarioModal(participante), icon: MessageSquare, color: 'purple', label: 'Comentarios', desc: participante.comentarios ? 'Ver/editar notas' : 'Agregar nota' }
+                                ].map((item, idx) => (
+                                  <button
+                                    key={idx}
+                                    onClick={() => {
+                                      item.action();
+                                      setMenuAbierto(null);
+                                    }}
+                                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-${item.color}-50 rounded-lg transition-colors`}
+                                  >
+                                    <item.icon className={`w-4 h-4 text-${item.color}-600`} />
+                                    <div>
+                                      <p className="font-semibold">{item.label}</p>
+                                      <p className="text-xs text-gray-500">{item.desc}</p>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+
+                              <div className="h-px bg-gray-200 my-1"></div>
+
+                              <div className="px-2 py-1">
+                                {[
+                                  { action: () => openModal(participante), icon: Edit, color: 'blue', label: 'Editar' },
+                                  { action: () => openDeleteModal(participante), icon: Trash2, color: 'red', label: 'Eliminar' }
+                                ].map((item, idx) => (
+                                  <button
+                                    key={idx}
+                                    onClick={() => {
+                                      item.action();
+                                      setMenuAbierto(null);
+                                    }}
+                                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-${item.color}-50 rounded-lg transition-colors`}
+                                  >
+                                    <item.icon className={`w-4 h-4 text-${item.color}-600`} />
+                                    <p className="font-semibold">{item.label}</p>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
 
       {/* Error Global */}
       {error && (
@@ -1878,22 +1642,13 @@ ${linkPublico}
           </div>
         </div>
       )}
-
+      
       <style>{`
         @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
         }
-        
-        .animate-fadeIn {
-          animation: fadeIn 0.2s ease-out;
-        }
+        .animate-fadeIn { animation: fadeIn 0.2s ease-out; }
       `}</style>
     </div>
   );
