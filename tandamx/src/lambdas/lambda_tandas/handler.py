@@ -467,6 +467,10 @@ def actualizar(event, context):
         if 'rondaActual' in body:
             update_expression += ", rondaActual = :rondaActual"
             expression_values[':rondaActual'] = int(body['rondaActual'])
+
+        if 'totalRondas' in body:
+            update_expression += ", totalRondas = :totalRondas"
+            expression_values[':totalRondas'] = int(body['totalRondas'])
         
         if 'montoPorRonda' in body:
             update_expression += ", montoPorRonda = :montoPorRonda"

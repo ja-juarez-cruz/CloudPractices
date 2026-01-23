@@ -257,7 +257,8 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
       const payload = {
         nombre: formData.nombre,
         montoPorRonda: parseFloat(formData.montoPorRonda),
-        diasRecordatorio: parseInt(formData.diasRecordatorio)
+        diasRecordatorio: parseInt(formData.diasRecordatorio),
+        totalRondas: parseInt(formData.totalRondas)
       };
 
       if (!esCumpleañera) {
@@ -521,7 +522,7 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
                   }
 
                   return participantesOrdenados.map((participante, index) => {
-                    const fechaCumple = new Date(participante.fechaCumpleaños);
+                    const fechaCumple = new Date(participante.fechaCumpleaños + 'T00:00:00');
                     const primerNombre = participante.nombre.split(' ')[0];
                     
                     return (
@@ -691,18 +692,29 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label htmlFor="config-total-rondas" className="block text-xs md:text-sm font-semibold text-gray-700 mb-2">
-                Total de Rondas
+                Total de Rondas {esCumpleañera && <span className="text-blue-600">(Editable)</span>}
               </label>
               <input
                 id="config-total-rondas"
-                type="text"
-                value={tandaData.totalRondas}
-                readOnly
-                className="w-full px-3 md:px-4 py-2 md:py-3 text-sm md:text-base border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-600 cursor-not-allowed"
+                type={esCumpleañera ? "number" : "text"}
+                name="totalRondas"
+                min={esCumpleañera ? "1" : undefined}
+                value={esCumpleañera ? formData.totalRondas || tandaData.totalRondas : tandaData.totalRondas}
+                onChange={esCumpleañera ? handleChange : undefined}
+                readOnly={!esCumpleañera}
+                className={`w-full px-3 md:px-4 py-2 md:py-3 text-sm md:text-base border-2 rounded-xl transition-all ${
+                  esCumpleañera 
+                    ? 'border-gray-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white text-gray-800' 
+                    : 'border-gray-200 bg-gray-50 text-gray-600 cursor-not-allowed'
+                }`}
               />
               <p className="mt-1 text-[10px] md:text-xs text-gray-500 flex items-start gap-1">
                 <Info className="w-3 h-3 flex-shrink-0 mt-0.5" />
-                <span>No se puede modificar después de crear la tanda</span>
+                <span>
+                  {esCumpleañera 
+                    ? 'Ajusta el total según los participantes con cumpleaños' 
+                    : 'No se puede modificar después de crear la tanda'}
+                </span>
               </p>
             </div>
 
