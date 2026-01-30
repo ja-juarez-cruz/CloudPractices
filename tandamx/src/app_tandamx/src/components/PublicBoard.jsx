@@ -1,28 +1,107 @@
-import React from 'react';
-import { Users, AlertCircle, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom'; // 🆕 AGREGAR
+import { Users, AlertCircle, CheckCircle, Loader } from 'lucide-react';
 import { calcularRondaActual } from '../utils/tandaCalculos';
 import logoTanda from '../public/assets/logos/logo-tanda-512.png';
 import logoTandaSvg from '../public/assets/logos/logo-tanda.svg';
 
-export default function PublicBoard({ tandaData, loading }) {
+const API_BASE_URL = 'https://9l2vrevqm1.execute-api.us-east-1.amazonaws.com/dev';
+
+export default function PublicBoard() {
+  // 🆕 OBTENER tandaId DESDE LA URL
+  const { tandaId } = useParams();
+  
+  // 🆕 ESTADOS PARA CARGAR DATOS
+  const [tandaData, setTandaData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // 🆕 CARGAR DATOS DE LA TANDA
+  useEffect(() => {
+    const cargarTanda = async () => {
+      if (!tandaId) {
+        setError('ID de tanda no proporcionado');
+        setLoading(false);
+        return;
+      }
+
+      console.log('🔄 Cargando tanda pública:', tandaId);
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/tandas/${tandaId}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+
+        console.log('📥 Status de respuesta:', response.status);
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            throw new Error('Tanda no encontrada');
+          }
+          const errorData = await response.json();
+          throw new Error(errorData.error?.message || `Error al cargar datos: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('✅ Datos recibidos:', data);
+
+        if (data.success && data.data) {
+          setTandaData(data.data);
+        } else {
+          throw new Error('Respuesta inválida del servidor');
+        }
+      } catch (error) {
+        console.error('❌ Error cargando tanda:', error);
+        setError(error.message || 'Error al cargar la información de la tanda');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarTanda();
+  }, [tandaId]);
+
+  // 🔄 LOADING STATE
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-slate-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Cargando...</p>
+          <div className="inline-block p-4 bg-white rounded-2xl shadow-xl mb-4">
+            <Loader className="w-12 h-12 text-blue-600 animate-spin" />
+          </div>
+          <p className="text-gray-600 font-medium">Cargando información...</p>
         </div>
       </div>
     );
   }
 
-  if (!tandaData) {
+  // 🔄 ERROR STATE
+  if (error || !tandaData) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-slate-50 flex items-center justify-center p-4">
-        <div className="text-center">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Tanda no encontrada</h2>
-          <p className="text-gray-600">No se pudo cargar la información de la tanda</p>
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
+          <div className="text-center">
+            <div className="inline-block p-4 bg-red-100 rounded-full mb-4">
+              <AlertCircle className="w-12 h-12 text-red-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              {error || 'Tanda no encontrada'}
+            </h2>
+            <p className="text-gray-600 mb-6">
+              No se pudo cargar la información de la tanda
+            </p>
+            <button
+              onClick={() => window.location.href = '/index.html'}
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
+            >
+              Ir al Inicio
+            </button>
+          </div>
         </div>
       </div>
     );

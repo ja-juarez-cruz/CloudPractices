@@ -1,12 +1,12 @@
 import React from 'react';
-import { Users, Plus, Calendar, DollarSign, TrendingUp, ArrowRight, Trash2, AlertTriangle, Gift, Clock, CheckCircle, AlertCircle, Sparkles } from 'lucide-react';
+import { Users, Plus, Calendar, DollarSign, TrendingUp, ArrowRight, Trash2, AlertTriangle, Gift, Clock, CheckCircle, AlertCircle, Sparkles, Loader } from 'lucide-react';
 import { 
   calcularFechasRondas, 
   calcularRondaActual,
   obtenerFechaHoyISO 
 } from '../utils/tandaCalculos';
 
-export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, onCrearNueva, onEliminarTanda }) {
+export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, onCrearNueva, onEliminarTanda, loading = false }) {
   console.log('🎬 InicioView INICIADO');
   console.log('   Tandas recibidas:', tandas?.length || 0);
   
@@ -23,7 +23,23 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
   const [showDeleteModal, setShowDeleteModal] = React.useState(false);
   const [tandaToDelete, setTandaToDelete] = React.useState(null);
   const [isDeleting, setIsDeleting] = React.useState(false);
+
+  // 🆕 MOSTRAR LOADING MIENTRAS SE CARGAN LAS TANDAS
+  if (loading) {
+    return (
+      <div className="min-h-[calc(100vh-200px)] flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="inline-block p-6 bg-gradient-to-br from-blue-100 to-sky-100 rounded-full mb-4">
+            <Loader className="w-12 h-12 text-blue-600 animate-spin" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-800 mb-2">Cargando tus tandas...</h3>
+          <p className="text-gray-600">Un momento por favor</p>
+        </div>
+      </div>
+    );
+  }
   
+  // 🆕 SOLO MOSTRAR ESTADO VACÍO SI NO HAY TANDAS Y NO ESTÁ CARGANDO
   if (!tandas || tandas.length === 0) {
     return (
       <div className="min-h-[calc(100vh-200px)] flex items-center justify-center p-4 md:p-6">
@@ -692,9 +708,8 @@ export default function InicioView({ tandas, setActiveView, onSeleccionarTanda, 
                     const numeroParticipantes = Array.isArray(tanda.participantes) ? tanda.participantes.length : 0;
                     const totalParticipantes = numeroParticipantes;
                     
-                    const cantidadARecibir = esCumpleañera 
-                      ? (totalParticipantes - 1) * tanda.montoPorRonda 
-                      : tanda.montoPorRonda * totalParticipantes;
+                    const cantidadARecibir =  (totalParticipantes - 1) * tanda.montoPorRonda 
+                      
                     
                     console.log('   💰 CÁLCULO MONTOS:');
                     console.log('      Total participantes:', totalParticipantes);

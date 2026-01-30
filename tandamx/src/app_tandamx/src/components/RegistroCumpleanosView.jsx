@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Gift, Calendar, Phone, User, Mail, Cake, PartyPopper, Sparkles, Heart, AlertCircle, CheckCircle, ArrowRight, Info, HelpCircle, X, ExternalLink } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Gift, Calendar, Phone, User, Mail, Cake, PartyPopper, Sparkles, Heart, AlertCircle, CheckCircle, ArrowRight, Info, HelpCircle, X } from 'lucide-react';
 
 const API_BASE_URL = 'https://9l2vrevqm1.execute-api.us-east-1.amazonaws.com/dev';
-const BASE_URL_ESTATIC_WEB = 'https://app-tandamx.s3.us-east-1.amazonaws.com';
 
 export default function RegistroCumpleanosView() {
-  const [token, setToken] = useState('');
+  const { token } = useParams();
+  const navigate = useNavigate();
+
   const [tandaData, setTandaData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -26,44 +28,43 @@ export default function RegistroCumpleanosView() {
   const [confetti, setConfetti] = useState(false);
 
   useEffect(() => {
-    const hash = window.location.hash;
-    console.log('🔍 Hash en RegistroCumpleanosView:', hash);
+    console.log('Token recibido desde URL:', token);
     
-    if (hash.startsWith('#/registro-cumple/')) {
-      const tokenFromUrl = hash.split('#/registro-cumple/')[1];
-      console.log('🎂 Token extraído:', tokenFromUrl);
-      
-      if (tokenFromUrl) {
-        setToken(tokenFromUrl);
-        cargarDatosTanda(tokenFromUrl);
-      } else {
-        console.error('❌ Token vacío');
-        setError('Link de registro inválido - Token vacío');
-        setLoading(false);
-      }
-    } else {
-      console.error('❌ Hash no coincide:', hash);
-      setError('Link de registro inválido - Hash incorrecto');
+    if (!token || token === 'undefined' || token.trim() === '') {
+      console.error('Token invalido:', token);
+      setError('Link de registro no valido. Por favor solicita un nuevo link.');
       setLoading(false);
+      return;
     }
-  }, []);
+    
+    cargarDatosTanda(token);
+  }, [token]);
 
   const cargarDatosTanda = async (tokenRegistro) => {
+    console.log('Cargando datos de tanda cumpleanera...');
+    setLoading(true);
+    setError(null);
+
     try {
       const response = await fetch(`${API_BASE_URL}/registro/${tokenRegistro}`);
       const data = await response.json();
 
+      console.log('Respuesta recibida:', data);
+
       if (!response.ok) {
-        throw new Error(data.error?.message || 'Error al cargar información');
+        throw new Error(data.error?.message || 'Error al cargar informacion');
       }
 
-      if (data.success) {
+      if (data.success && data.data) {
+        console.log('Datos de tanda cargados correctamente');
         setTandaData(data.data);
         setTandaId(data.data.tandaId);
+      } else {
+        throw new Error('Respuesta invalida del servidor');
       }
     } catch (err) {
-      console.error('Error:', err);
-      setError(err.message || 'No se pudo cargar la información de la tanda');
+      console.error('Error cargando tanda:', err);
+      setError(err.message || 'No se pudo cargar la informacion de la tanda');
     } finally {
       setLoading(false);
     }
@@ -92,11 +93,11 @@ export default function RegistroCumpleanosView() {
       }
       
       if (!formData.telefono || formData.telefono.length !== 10) {
-        throw new Error('El teléfono debe tener 10 dígitos');
+        throw new Error('El telefono debe tener 10 digitos');
       }
 
       if (!formData.fechaCumpleaños) {
-        throw new Error('La fecha de cumpleaños es requerida');
+        throw new Error('La fecha de cumpleanos es requerida');
       }
 
       const response = await fetch(`${API_BASE_URL}/registro/${token}`, {
@@ -119,6 +120,7 @@ export default function RegistroCumpleanosView() {
       }
 
       if (data.success) {
+        console.log('Registro exitoso');
         setNumeroAsignado(data.data.numeroAsignado);
         setTandaId(data.data.tandaId);
         setSuccess(true);
@@ -127,7 +129,7 @@ export default function RegistroCumpleanosView() {
         setTimeout(() => setConfetti(false), 5000);
       }
     } catch (err) {
-      console.error('Error:', err);
+      console.error('Error en registro:', err);
       setError(err.message || 'Error al completar el registro');
     } finally {
       setSubmitting(false);
@@ -136,7 +138,7 @@ export default function RegistroCumpleanosView() {
 
   const irAlTableroPublico = () => {
     if (tandaId) {
-      window.location.href = `${BASE_URL_ESTATIC_WEB}/index.html?tanda=${tandaId}`;
+      navigate(`/public-board/${tandaId}`);
     }
   };
 
@@ -145,7 +147,7 @@ export default function RegistroCumpleanosView() {
       <div className="min-h-screen bg-gradient-to-br from-pink-100 via-purple-100 to-blue-100 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-pink-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 font-semibold">Cargando información...</p>
+          <p className="text-gray-600 font-semibold">Cargando informacion...</p>
         </div>
       </div>
     );
@@ -159,7 +161,13 @@ export default function RegistroCumpleanosView() {
             <AlertCircle className="w-10 h-10 text-red-500" />
           </div>
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Error</h2>
-          <p className="text-gray-600">{error}</p>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
+          >
+            Ir al Inicio
+          </button>
         </div>
       </div>
     );
@@ -176,9 +184,9 @@ export default function RegistroCumpleanosView() {
           <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <AlertCircle className="w-10 h-10 text-orange-500" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">¡Cupo Completo! 🎉</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4">Cupo Completo!</h2>
           <p className="text-gray-600 mb-6">
-            Lo sentimos, esta tanda ya alcanzó el número máximo de participantes ({tandaData.totalRondas}).
+            Lo sentimos, esta tanda ya alcanzo el numero maximo de participantes ({tandaData.totalRondas}).
           </p>
           
           <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-6">
@@ -199,7 +207,7 @@ export default function RegistroCumpleanosView() {
           </button>
 
           <p className="text-xs text-gray-500 mt-4">
-            Puedes ver el estado de la tanda en el tablero público
+            Puedes ver el estado de la tanda en el tablero publico
           </p>
         </div>
       </div>
@@ -236,26 +244,26 @@ export default function RegistroCumpleanosView() {
             <CheckCircle className="w-12 h-12 text-white" />
           </div>
           
-          <h2 className="text-3xl font-black text-gray-800 mb-2">¡Registro Exitoso! 🎉</h2>
+          <h2 className="text-3xl font-black text-gray-800 mb-2">Registro Exitoso!</h2>
           
           <div className="my-8 p-6 bg-gradient-to-br from-pink-50 to-purple-50 rounded-2xl border-2 border-pink-200">
             <p className="text-sm text-gray-600 mb-2">
-              Tu número asignado <span className="font-bold text-pink-600">por el momento</span> es:
+              Tu numero asignado <span className="font-bold text-pink-600">por el momento</span> es:
             </p>
             <div className="w-20 h-20 bg-gradient-to-br from-pink-500 to-purple-600 text-white rounded-2xl flex items-center justify-center mx-auto shadow-lg transform hover:scale-110 transition-transform">
               <span className="text-4xl font-black">{numeroAsignado}</span>
             </div>
-            <p className="text-xs text-gray-500 mt-3">Asignado automáticamente por tu fecha de cumpleaños</p>
+            <p className="text-xs text-gray-500 mt-3">Asignado automaticamente por tu fecha de cumpleanos</p>
           </div>
 
           <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 mb-6">
             <div className="flex items-start gap-3">
               <Info className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
               <div className="text-left">
-                <p className="text-sm font-bold text-amber-800 mb-2">⚠️ Importante: Tu número puede cambiar</p>
+                <p className="text-sm font-bold text-amber-800 mb-2">Importante: Tu numero puede cambiar</p>
                 <p className="text-xs text-amber-700">
-                  El número que ves arriba es <span className="font-bold">temporal</span>. 
-                  Se recalculará automáticamente cuando se registren más participantes.
+                  El numero que ves arriba es <span className="font-bold">temporal</span>. 
+                  Se recalculara automaticamente cuando se registren mas participantes.
                 </p>
               </div>
             </div>
@@ -294,7 +302,7 @@ export default function RegistroCumpleanosView() {
           <div className="inline-block p-4 bg-white rounded-full shadow-lg mb-4 animate-pulse">
             <Gift className="w-12 h-12 text-pink-500" />
           </div>
-          <h1 className="text-4xl md:text-5xl font-black text-gray-800 mb-2">🎂 Tanda Cumpleañera</h1>
+          <h1 className="text-4xl md:text-5xl font-black text-gray-800 mb-2">Tanda Cumpleanera</h1>
           <p className="text-xl text-gray-700 font-semibold">{tandaData?.nombre}</p>
         </div>
 
@@ -302,9 +310,9 @@ export default function RegistroCumpleanosView() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="text-center p-4 bg-gradient-to-br from-pink-50 to-pink-100 rounded-2xl border-2 border-pink-200">
               <Cake className="w-8 h-8 text-pink-500 mx-auto mb-2" />
-              <p className="text-sm text-gray-600 mb-1">Aportación</p>
+              <p className="text-sm text-gray-600 mb-1">Aportacion</p>
               <p className="text-2xl font-black text-pink-600">${montoPorRonda.toLocaleString()}</p>
-              <p className="text-xs text-gray-500 mt-1">por cumpleaños</p>
+              <p className="text-xs text-gray-500 mt-1">por cumpleanos</p>
             </div>
 
             <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-2xl border-2 border-purple-200">
@@ -316,9 +324,9 @@ export default function RegistroCumpleanosView() {
 
             <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl border-2 border-blue-200">
               <Sparkles className="w-8 h-8 text-blue-500 mx-auto mb-2" />
-              <p className="text-sm text-gray-600 mb-1">Recibirás</p>
+              <p className="text-sm text-gray-600 mb-1">Recibiras</p>
               <p className="text-2xl font-black text-blue-600">${totalARecibir.toLocaleString()}</p>
-              <p className="text-xs text-gray-500 mt-1">en tu cumpleaños</p>
+              <p className="text-xs text-gray-500 mt-1">en tu cumpleanos</p>
             </div>
           </div>
 
@@ -329,7 +337,7 @@ export default function RegistroCumpleanosView() {
               className="w-full flex items-center justify-center gap-3 text-pink-700 hover:text-pink-900 transition-colors"
             >
               <HelpCircle className="w-6 h-6" />
-              <span className="font-bold text-sm">¿Cómo funciona la Tanda Cumpleañera?</span>
+              <span className="font-bold text-sm">Como funciona la Tanda Cumpleanera?</span>
             </button>
           </div>
 
@@ -344,7 +352,7 @@ export default function RegistroCumpleanosView() {
                 name="nombre"
                 value={formData.nombre}
                 onChange={handleChange}
-                placeholder="Juan Pérez García"
+                placeholder="Juan Perez Garcia"
                 required
                 className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-200 transition-all"
               />
@@ -353,7 +361,7 @@ export default function RegistroCumpleanosView() {
             <div>
               <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-2">
                 <Phone className="w-4 h-4 text-purple-500" />
-                Teléfono (WhatsApp) *
+                Telefono (WhatsApp) *
               </label>
               <input
                 type="tel"
@@ -366,7 +374,7 @@ export default function RegistroCumpleanosView() {
                 required
                 className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
               />
-              <p className="mt-1.5 text-xs text-gray-500">📱 10 dígitos sin espacios</p>
+              <p className="mt-1.5 text-xs text-gray-500">10 digitos sin espacios</p>
             </div>
 
             <div>
@@ -387,7 +395,7 @@ export default function RegistroCumpleanosView() {
             <div>
               <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-2">
                 <Calendar className="w-4 h-4 text-pink-500" />
-                Fecha de Cumpleaños *
+                Fecha de Cumpleanos *
               </label>
               <input
                 type="date"
@@ -417,11 +425,12 @@ export default function RegistroCumpleanosView() {
                     className="text-pink-600 font-bold hover:underline"
                   >
                     Aviso de Privacidad
-                  </a>
-                  {' '}y autorizo el uso de mis datos.
+                  </a>{' '}
+                  y autorizo el uso de mis datos.
                 </span>
               </label>
             </div>
+
 
             {error && (
               <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl flex items-start gap-3">
@@ -433,7 +442,7 @@ export default function RegistroCumpleanosView() {
             <button
               type="submit"
               disabled={submitting || !aceptaPrivacidad}
-              className="w-full py-4 bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 text-white rounded-xl font-black text-lg hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+              className="w-full py-4 bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 text-white rounded-xl font-black text-lg hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-all"
             >
               {submitting ? (
                 <>
@@ -443,7 +452,7 @@ export default function RegistroCumpleanosView() {
               ) : (
                 <>
                   <Gift className="w-6 h-6" />
-                  ¡Unirme a la Tanda! 🎉
+                  Unirme a la Tanda!
                 </>
               )}
             </button>
@@ -458,11 +467,11 @@ export default function RegistroCumpleanosView() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Heart className="w-8 h-8" />
-                  <h3 className="text-xl font-bold">¿Cómo funciona?</h3>
+                  <h3 className="text-xl font-bold">Como funciona?</h3>
                 </div>
                 <button
                   onClick={() => setShowInfoModal(false)}
-                  className="p-2 hover:bg-white/20 rounded-lg"
+                  className="p-2 hover:bg-white/20 rounded-lg transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -474,9 +483,9 @@ export default function RegistroCumpleanosView() {
                 <div className="flex items-start gap-3">
                   <span className="text-3xl">🎂</span>
                   <div>
-                    <h4 className="font-bold text-pink-900 mb-1">Recibes en tu cumpleaños</h4>
+                    <h4 className="font-bold text-pink-900 mb-1">Recibes en tu cumpleanos</h4>
                     <p className="text-sm text-pink-800">
-                      Los demás participantes te dan ${montoPorRonda.toLocaleString()} cada uno.
+                      Los demas participantes te dan ${montoPorRonda.toLocaleString()} cada uno.
                     </p>
                   </div>
                 </div>
@@ -486,9 +495,9 @@ export default function RegistroCumpleanosView() {
                 <div className="flex items-start gap-3">
                   <span className="text-3xl">💝</span>
                   <div>
-                    <h4 className="font-bold text-purple-900 mb-1">Das en cada cumpleaños</h4>
+                    <h4 className="font-bold text-purple-900 mb-1">Das en cada cumpleanos</h4>
                     <p className="text-sm text-purple-800">
-                      Tú darás ${montoPorRonda.toLocaleString()} a cada persona en su cumpleaños.
+                      Tu daras ${montoPorRonda.toLocaleString()} a cada persona en su cumpleanos.
                     </p>
                   </div>
                 </div>
@@ -498,9 +507,9 @@ export default function RegistroCumpleanosView() {
                 <div className="flex items-start gap-3">
                   <span className="text-3xl">🎁</span>
                   <div>
-                    <h4 className="font-bold text-blue-900 mb-1">Número automático</h4>
+                    <h4 className="font-bold text-blue-900 mb-1">Numero automatico</h4>
                     <p className="text-sm text-blue-800">
-                      Tu número se asigna según tu fecha de cumpleaños.
+                      Tu numero se asigna segun tu fecha de cumpleanos.
                     </p>
                   </div>
                 </div>
@@ -508,7 +517,7 @@ export default function RegistroCumpleanosView() {
 
               <button
                 onClick={() => setShowInfoModal(false)}
-                className="w-full py-3 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-xl font-bold"
+                className="w-full py-3 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-xl font-bold hover:opacity-90 transition-opacity"
               >
                 Entendido
               </button>

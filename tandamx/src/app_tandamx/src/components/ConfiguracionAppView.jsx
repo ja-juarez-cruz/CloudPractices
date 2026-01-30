@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom'; // 🆕 Importar
 import { User, Mail, Phone, Trash2, AlertTriangle, Shield, ChevronLeft, X, Info } from 'lucide-react';
 
 const API_BASE_URL = 'https://9l2vrevqm1.execute-api.us-east-1.amazonaws.com/dev';
 
-export default function ConfiguracionAppView({ userData, onBack, onAccountDeleted }) {
+// 🔄 ACTUALIZAR LA FIRMA - Remover onBack
+export default function ConfiguracionAppView({ userData, onAccountDeleted }) {
+  const navigate = useNavigate(); // 🆕 Hook de navegación
+  
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [confirmacionTexto, setConfirmacionTexto] = useState('');
   const [loading, setLoading] = useState(false);
@@ -49,9 +53,9 @@ export default function ConfiguracionAppView({ userData, onBack, onAccountDelete
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-slate-50 py-6 md:py-8 px-4">
       <div className="max-w-4xl mx-auto">
-        {/* Header con botón de regreso */}
+        {/* Header con botón de regreso - 🔄 CAMBIO AQUÍ */}
         <button
-          onClick={onBack}
+          onClick={() => navigate(-1)} // 🔄 Cambiar onBack por navigate(-1)
           className="flex items-center gap-2 text-gray-700 hover:text-blue-600 mb-4 md:mb-6 font-semibold transition-colors text-sm md:text-base"
         >
           <ChevronLeft className="w-4 h-4 md:w-5 md:h-5" />
@@ -71,6 +75,8 @@ export default function ConfiguracionAppView({ userData, onBack, onAccountDelete
           </div>
         </div>
 
+        {/* ... RESTO DEL CÓDIGO SIN CAMBIOS ... */}
+        
         {/* Información del Usuario */}
         <div className="bg-white rounded-xl md:rounded-2xl shadow-lg border-2 border-gray-100 p-4 md:p-6 mb-4 md:mb-6">
           <div className="flex items-center gap-2 mb-4">
@@ -184,7 +190,7 @@ export default function ConfiguracionAppView({ userData, onBack, onAccountDelete
         </div>
       </div>
 
-      {/* Modal de Confirmación de Eliminación */}
+      {/* Modal de Confirmación de Eliminación - SIN CAMBIOS */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-fadeIn">
           <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl animate-scaleIn">
@@ -307,7 +313,7 @@ export default function ConfiguracionAppView({ userData, onBack, onAccountDelete
   );
 }
 
-// Agregar estilos para las animaciones
+// Agregar estilos para las animaciones - SIN CAMBIOS
 if (typeof document !== 'undefined') {
   const style = document.createElement('style');
   style.textContent = `

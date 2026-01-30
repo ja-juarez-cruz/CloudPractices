@@ -104,7 +104,7 @@
       color: var(--text);
     }
 
-    ul {
+    ul, ol {
       padding-left: 24px;
       margin: 12px 0;
     }
@@ -122,7 +122,7 @@
     a {
       color: var(--light-blue);
       text-decoration: none;
-      word-break: break-all;
+      word-break: break-word;
     }
 
     a:hover {
@@ -146,6 +146,41 @@
     .contact-box a {
       font-weight: 600;
       font-size: 1.05rem;
+    }
+
+    .deletion-box {
+      background-color: #fef2f2;
+      border: 2px solid #fecaca;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+
+    .deletion-box h4 {
+      margin: 0 0 12px 0;
+      color: #991b1b;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .deletion-box .delete-link {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+      color: white;
+      border-radius: 8px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.3s ease;
+    }
+
+    .deletion-box .delete-link:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+      text-decoration: none;
     }
 
     footer {
@@ -205,7 +240,7 @@
   <div class="container">
     <div class="header">
       <h1>Política de Privacidad</h1>
-      <p class="updated">Última actualización: 11 de enero de 2026</p>
+      <p class="updated">Última actualización: 28 de enero de 2026</p>
     </div>
 
     <div class="content">
@@ -363,7 +398,61 @@
         tu información reciba un nivel adecuado de protección.
       </p>
 
-      <h2><span class="section-icon">📝</span>10. Cambios a esta Política</h2>
+      <h2><span class="section-icon">🗑️</span>10. Eliminación de Cuenta y Datos</h2>
+      <p>
+        Puedes solicitar la eliminación permanente de tu cuenta y todos tus datos 
+        asociados en cualquier momento. Este proceso es <strong>irreversible</strong> 
+        y eliminará:
+      </p>
+      <ul>
+        <li>Tu cuenta de usuario y credenciales de acceso</li>
+        <li>Todas las tandas que hayas creado</li>
+        <li>Información de participantes que registraste</li>
+        <li>Historial completo de pagos y transacciones</li>
+        <li>Configuraciones, preferencias y datos personales</li>
+      </ul>
+
+      <div class="deletion-box">
+        <h4>🔗 Solicitar Eliminación de Cuenta</h4>
+        <p>
+          Para eliminar tu cuenta, puedes hacerlo de dos formas:
+        </p>
+        <ol>
+          <li>
+            <strong>Opción 1 - Formulario web:</strong> Visita nuestra página de 
+            eliminación de cuenta y completa el formulario
+            <br>
+            <a href="https://app-tandamx.s3.us-east-1.amazonaws.com/index.html#/delete-account" class="delete-link" target="_blank" rel="noopener noreferrer">
+              🗑️ Solicitar Eliminación de Cuenta
+            </a>
+          </li>
+          <li style="margin-top: 16px;">
+            <strong>Opción 2 - Correo electrónico:</strong> Envía un correo a 
+            <a href="mailto:tandamx.soporte@gmail.com">tandamx.soporte@gmail.com</a> 
+            desde tu dirección de correo registrada, indicando que deseas eliminar tu cuenta
+          </li>
+        </ol>
+
+        <p style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #fecaca;">
+          <strong>Proceso de eliminación:</strong>
+        </p>
+        <ol>
+          <li>Tu cuenta será desactivada inmediatamente</li>
+          <li>No podrás acceder a tu cuenta ni a tus tandas</li>
+          <li>Recibirás una confirmación por correo electrónico</li>
+          <li>Tus datos serán eliminados en un plazo <strong>máximo de 30 días</strong></li>
+          <li>Recibirás una notificación final cuando se complete el proceso</li>
+        </ol>
+
+        <p style="margin-top: 16px; background-color: #fef3c7; padding: 12px; border-radius: 6px; border-left: 3px solid #f59e0b;">
+          <strong>⚠️ Importante:</strong> Si cambias de opinión después de solicitar 
+          la eliminación, contáctanos inmediatamente a 
+          <a href="mailto:tandamx.soporte@gmail.com">tandamx.soporte@gmail.com</a> 
+          antes de que se complete el proceso de 30 días.
+        </p>
+      </div>
+
+      <h2><span class="section-icon">📝</span>11. Cambios a esta Política</h2>
       <p>
         Podemos actualizar esta Política de Privacidad ocasionalmente. Te 
         notificaremos sobre cambios significativos mediante la app o por correo 

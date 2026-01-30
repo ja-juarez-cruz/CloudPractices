@@ -131,7 +131,7 @@ export default function DashboardView({ tandaData, estadisticas, onCrearTanda })
     if (!tandaData) return;
     
     try {
-      const publicUrl = `${BASE_URL_ESTATIC_WEB}/index.html?tanda=${tandaData.tandaId}`;
+      const publicUrl = `${BASE_URL_ESTATIC_WEB}/index.html#/public-board/${tandaData.tandaId}`;
       navigator.clipboard.writeText(publicUrl);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
@@ -144,7 +144,7 @@ export default function DashboardView({ tandaData, estadisticas, onCrearTanda })
   const abrirModalWhatsApp = () => {
     if (!tandaData) return;
     
-    const publicUrl = `${BASE_URL_ESTATIC_WEB}/index.html?tanda=${tandaData.tandaId}`;
+    const publicUrl = `${BASE_URL_ESTATIC_WEB}/index.html#/public-board/${tandaData.tandaId}`;
     const fechaInicio = new Date(tandaData.fechaInicio + 'T00:00:00');
     fechaInicio.setDate(fechaInicio.getDate());
     

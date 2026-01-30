@@ -1,141 +1,54 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { DollarSign, Calendar, Users, Clock, Save, X, AlertCircle, Download, Share2, Gift } from 'lucide-react';
-import html2canvas from 'html2canvas';
+import { useNavigate } from 'react-router-dom';
+import { DollarSign, Calendar, Users, Clock, Save, AlertCircle, Download, Share2, Gift } from 'lucide-react';
+import { calcularFechasRondas, obtenerFechaHoyISO, formatearFechaLarga } from '../utils/tandaCalculos';
+import {
+  exportarCalendarioComoImagen,
+  enviarCalendarioComoImagen
+} from '../utils/tandaExport';
+
 
 const API_BASE_URL = 'https://9l2vrevqm1.execute-api.us-east-1.amazonaws.com/dev';
 
-// Componente para el Calendario de Rondas con exportación
+// ==================== COMPONENTE CALENDARIO RONDAS ====================
 function CalendarioRondas({ fechasEjemplo, totalRondas, nombreTanda, montoPorRonda, frecuencia }) {
   const calendarioRef = useRef(null);
   const [isExporting, setIsExporting] = useState(false);
 
   const exportarCalendario = async () => {
-    if (!calendarioRef.current) {
-      alert('No se pudo encontrar el calendario para exportar');
-      return;
-    }
-    
+    if (!calendarioRef.current) return;
+
     setIsExporting(true);
-    
     try {
-      console.log('📸 Iniciando captura de calendario...');
-      
-      const canvas = await html2canvas(calendarioRef.current, {
-        backgroundColor: '#ffffff',
-        scale: 2,
-        logging: false,
-        useCORS: true,
-        allowTaint: true,
-        windowWidth: calendarioRef.current.scrollWidth,
-        windowHeight: calendarioRef.current.scrollHeight
+      await exportarCalendarioComoImagen({
+        elementRef: calendarioRef,
+        fileName: `calendario-${nombreTanda || 'tanda'}.png`
       });
-      
-      console.log('✅ Canvas generado correctamente');
-      
-      canvas.toBlob((blob) => {
-        if (!blob) {
-          alert('Error al generar la imagen');
-          return;
-        }
-        
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.download = `calendario-${nombreTanda || 'tanda'}.png`;
-        link.href = url;
-        
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        setTimeout(() => URL.revokeObjectURL(url), 100);
-        
-        console.log('✅ Descarga iniciada');
-      }, 'image/png');
-      
-    } catch (error) {
-      console.error('❌ Error al exportar calendario:', error);
-      alert(`Error al exportar el calendario: ${error.message}`);
+    } catch (e) {
+      alert('Error al exportar calendario');
     } finally {
       setIsExporting(false);
     }
   };
 
   const compartirCalendario = async () => {
-    if (!calendarioRef.current) {
-      alert('No se pudo encontrar el calendario para compartir');
-      return;
-    }
-    
+    if (!calendarioRef.current) return;
+
     setIsExporting(true);
-    
     try {
-      console.log('📸 Iniciando captura para compartir...');
-      
-      const canvas = await html2canvas(calendarioRef.current, {
-        backgroundColor: '#ffffff',
-        scale: 2,
-        logging: false,
-        useCORS: true,
-        allowTaint: true,
-        windowWidth: calendarioRef.current.scrollWidth,
-        windowHeight: calendarioRef.current.scrollHeight
+      await enviarCalendarioComoImagen({
+        elementRef: calendarioRef,
+        fileName: `calendario-${nombreTanda || 'tanda'}.png`,
+        mensaje: '📅 Te comparto el calendario de rondas de nuestra tanda'
       });
-      
-      console.log('✅ Canvas generado para compartir');
-      
-      canvas.toBlob(async (blob) => {
-        if (!blob) {
-          alert('Error al generar la imagen');
-          setIsExporting(false);
-          return;
-        }
-        
-        const fileName = `calendario-${nombreTanda || 'tanda'}.png`;
-        const file = new File([blob], fileName, { type: 'image/png' });
-        
-        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-          try {
-            console.log('📱 Usando Web Share API...');
-            await navigator.share({
-              files: [file],
-              title: `Calendario - ${nombreTanda || 'Tanda'}`,
-              text: `Calendario de rondas para ${nombreTanda || 'la tanda'}`
-            });
-            console.log('✅ Compartido exitosamente');
-          } catch (shareError) {
-            if (shareError.name !== 'AbortError') {
-              console.log('⚠️ Error compartiendo, intentando descargar...', shareError);
-              const url = URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.download = fileName;
-              link.href = url;
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              setTimeout(() => URL.revokeObjectURL(url), 100);
-            }
-          }
-        } else {
-          console.log('⚠️ Web Share API no disponible, descargando...');
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.download = fileName;
-          link.href = url;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          setTimeout(() => URL.revokeObjectURL(url), 100);
-        }
-        
-        setIsExporting(false);
-      }, 'image/png');
-      
-    } catch (error) {
-      console.error('❌ Error al compartir calendario:', error);
-      alert(`Error al compartir: ${error.message}`);
+    } catch (e) {
+      alert('No se pudo compartir el calendario');
+    } finally {
       setIsExporting(false);
     }
   };
+
+
 
   return (
     <div className="bg-white rounded-xl border-2 border-blue-200 overflow-hidden">
@@ -182,22 +95,23 @@ function CalendarioRondas({ fechasEjemplo, totalRondas, nombreTanda, montoPorRon
               className="flex flex-col items-center justify-center p-2 rounded-lg bg-white border border-blue-200 hover:border-blue-400 transition-colors"
             >
               <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-800 text-white rounded-lg flex items-center justify-center font-bold text-sm mb-1 shadow-sm">
-                {item.ronda}
+                {item.numero}
               </div>
               <div className="text-xs font-bold text-gray-800">
-                {item.fecha.toLocaleDateString('es-MX', { 
+                {item.fechaInicio.toLocaleDateString('es-MX', { 
                   day: 'numeric', 
                   month: 'short'
                 })}
               </div>
               <div className="text-[10px] text-gray-600">
-                {item.fecha.getFullYear()}
+                {item.fechaInicio.getFullYear()}
               </div>
             </div>
           ))}
         </div>
       </div>
 
+      {/* Calendario para exportación (oculto) */}
       <div ref={calendarioRef} className="absolute left-[-9999px] top-[-9999px] p-8 bg-white" style={{ width: '800px' }}>
         <div className="mb-6 text-center pb-4 border-b-2 border-blue-200">
           <h1 className="text-3xl font-black text-gray-800 mb-2">
@@ -226,19 +140,19 @@ function CalendarioRondas({ fechasEjemplo, totalRondas, nombreTanda, montoPorRon
               className="flex flex-col items-center p-3 rounded-xl bg-gradient-to-br from-blue-50 to-sky-50 border-2 border-blue-200"
             >
               <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-800 text-white rounded-xl flex items-center justify-center font-black text-lg shadow-lg mb-2">
-                {item.ronda}
+                {item.numero}
               </div>
               <div className="text-sm font-bold text-gray-700 mb-1">
-                Ronda {item.ronda}
+                Ronda {item.numero}
               </div>
               <div className="text-base font-black text-gray-900">
-                {item.fecha.toLocaleDateString('es-MX', { 
+                {item.fechaInicio.toLocaleDateString('es-MX', { 
                   day: '2-digit', 
                   month: 'short'
                 })}
               </div>
               <div className="text-sm text-gray-600 font-semibold">
-                {item.fecha.getFullYear()}
+                {item.fechaInicio.getFullYear()}
               </div>
             </div>
           ))}
@@ -282,12 +196,16 @@ function CalendarioRondas({ fechasEjemplo, totalRondas, nombreTanda, montoPorRon
   );
 }
 
+
+// ==================== COMPONENTE PRINCIPAL ====================
 export default function CrearTandaView({ setTandaData, setLoading, setError, loadAdminData }) {
+  const navigate = useNavigate();
+  
   const [formData, setFormData] = useState({
     nombre: '',
     montoPorRonda: '',
     totalRondas: '',
-    fechaInicio: new Date().toISOString().split('T')[0],
+    fechaInicio: obtenerFechaHoyISO(),
     frecuencia: 'semanal',
     diasRecordatorio: '1',
     metodoPago: 'Transferencia'
@@ -295,7 +213,7 @@ export default function CrearTandaView({ setTandaData, setLoading, setError, loa
 
   const [errors, setErrors] = useState({});
 
-  // Calcular fechas de ejemplo de rondas dinámicamente
+  // ==================== CALCULAR FECHAS DE EJEMPLO ====================
   const fechasEjemplo = useMemo(() => {
     // Para tanda cumpleañera, no mostramos calendario hasta que haya participantes registrados
     if (formData.frecuencia === 'cumpleaños') {
@@ -304,75 +222,14 @@ export default function CrearTandaView({ setTandaData, setLoading, setError, loa
 
     if (!formData.fechaInicio || !formData.totalRondas) return [];
     
-    const fechaBase = new Date(formData.fechaInicio);
-    const rondas = parseInt(formData.totalRondas);
-    const resultado = [];
-    
-    function ultimoDiaDelMes(fecha) {
-      return new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0);
-    }
+    const totalRondas = parseInt(formData.totalRondas);
+    if (isNaN(totalRondas) || totalRondas < 1) return [];
 
-    const calcularFechaRonda = (indice) => {
-      const fecha = new Date(fechaBase);
-      const frecuencia = formData.frecuencia;
-      
-      if (frecuencia === "semanal") {
-        if (indice === 1) {
-          fecha.setDate(fecha.getDate());
-        } else {
-          fecha.setDate(fecha.getDate() + 7 * (indice - 1));
-        }
-        fecha.setDate(fecha.getDate() + 1);
-        return fecha;
-      }
-
-      if (frecuencia === "mensual") {
-        fecha.setMonth(fecha.getMonth() + indice - 1);
-        fecha.setDate(fecha.getDate() + 1);
-        return fecha;
-      }
-
-      if (frecuencia === "quincenal") {
-        let temp = new Date(fecha);
-        let diaInicial = temp.getDate();
-        let esFinDeMes = diaInicial > 15;
-
-        for (let i = 1; i <= indice; i++) {
-          if (esFinDeMes) {
-            temp = ultimoDiaDelMes(temp);
-          } else {
-            temp.setDate(15);
-          }
-
-          if (i < indice) {
-            if (esFinDeMes) {
-              temp.setDate(1);
-              temp.setMonth(temp.getMonth() + 1);
-              temp.setDate(15);
-            } else {
-              temp = ultimoDiaDelMes(temp);
-            }
-            esFinDeMes = !esFinDeMes;
-          }
-        }
-
-        return temp;
-      }
-
-      return fecha;
-    };
-    
-    for (let i = 1; i <= rondas; i++) {
-      const fecha = calcularFechaRonda(i);
-      resultado.push({
-        ronda: i,
-        fecha: fecha
-      });
-    }
-    
-    return resultado;
+    // Usar la función de utils/tandaCalculos.js
+    return calcularFechasRondas(formData.fechaInicio, totalRondas, formData.frecuencia);
   }, [formData.fechaInicio, formData.totalRondas, formData.frecuencia]);
 
+  // ==================== VALIDACIÓN ====================
   const validateForm = () => {
     const newErrors = {};
     
@@ -392,11 +249,22 @@ export default function CrearTandaView({ setTandaData, setLoading, setError, loa
     if (formData.frecuencia !== 'cumpleaños' && !formData.fechaInicio) {
       newErrors.fechaInicio = 'La fecha de inicio es requerida';
     }
+
+    // Validar que la fecha no sea del pasado (para tandas normales)
+    if (formData.frecuencia !== 'cumpleaños' && formData.fechaInicio) {
+      const fechaSeleccionada = new Date(formData.fechaInicio);
+      const hoy = new Date(obtenerFechaHoyISO());
+      
+      if (fechaSeleccionada < hoy) {
+        newErrors.fechaInicio = 'La fecha de inicio no puede ser anterior a hoy';
+      }
+    }
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
+  // ==================== SUBMIT ====================
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -439,6 +307,9 @@ export default function CrearTandaView({ setTandaData, setLoading, setError, loa
         
         await loadAdminData();
         setTandaData(data.data);
+        
+        // Navegar a participantes
+        navigate('/participantes');
       }
     } catch (error) {
       console.error('Error creando tanda:', error);
@@ -448,6 +319,7 @@ export default function CrearTandaView({ setTandaData, setLoading, setError, loa
     }
   };
 
+  // ==================== HANDLERS ====================
   const handleChange = (e) => {
     const { name, value } = e.target;
     
@@ -466,10 +338,11 @@ export default function CrearTandaView({ setTandaData, setLoading, setError, loa
 
   const esCumpleañera = formData.frecuencia === 'cumpleaños';
 
+  // ==================== RENDER ====================
   return (
     <div className="max-w-4xl mx-auto">
       <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-        {/* Header - SIEMPRE AZUL */}
+        {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-6 text-white">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
@@ -515,7 +388,7 @@ export default function CrearTandaView({ setTandaData, setLoading, setError, loa
               )}
             </div>
 
-            {/* Frecuencia - MOVIDO ARRIBA */}
+            {/* Frecuencia */}
             <div>
               <label htmlFor="frecuencia" className="block text-sm font-semibold text-gray-700 mb-2">
                 <Clock className="w-4 h-4 inline mr-1" />
@@ -633,6 +506,7 @@ export default function CrearTandaView({ setTandaData, setLoading, setError, loa
                   id="fecha-inicio"
                   name="fechaInicio"
                   type="date"
+                  min={obtenerFechaHoyISO()}
                   value={formData.fechaInicio}
                   onChange={handleChange}
                   className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 transition-all ${
@@ -641,6 +515,11 @@ export default function CrearTandaView({ setTandaData, setLoading, setError, loa
                       : 'border-gray-200 focus:border-blue-500 focus:ring-blue-200'
                   }`}
                 />
+                {formData.fechaInicio && !errors.fechaInicio && (
+                  <p className="mt-1.5 text-xs text-gray-600">
+                    {formatearFechaLarga(formData.fechaInicio)}
+                  </p>
+                )}
                 {errors.fechaInicio && (
                   <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
                     <AlertCircle className="w-3 h-3" />
@@ -661,38 +540,7 @@ export default function CrearTandaView({ setTandaData, setLoading, setError, loa
               />
             )}
 
-            {/* Días de Recordatorio
-            <div>
-              <label htmlFor="dias-recordatorio" className="block text-sm font-semibold text-gray-700 mb-2">
-                Días de Anticipación para Recordatorios
-              </label>
-              <select
-                id="dias-recordatorio"
-                name="diasRecordatorio"
-                value={formData.diasRecordatorio}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
-              >
-                <option value="1">1 día antes</option>
-                <option value="2">2 días antes</option>
-                <option value="3">3 días antes</option>
-                <option value="5">5 días antes</option>
-                <option value="7">7 días antes</option>
-                {esCumpleañera && (
-                  <>
-                    <option value="15">15 días antes</option>
-                    <option value="30">30 días antes</option>
-                  </>
-                )}
-              </select>
-              <p className="mt-1.5 text-xs text-gray-500">
-                {esCumpleañera 
-                  ? 'Cuándo recordar a los participantes sobre el cumpleaños'
-                  : 'Cuándo enviar recordatorios automáticos antes del vencimiento'}
-              </p>
-            </div>*/}
-
-            {/* Resumen Financiero - SIEMPRE AZUL */}
+            {/* Resumen Financiero */}
             <div className="bg-gradient-to-br from-blue-50 to-sky-50 rounded-xl p-5 border-2 border-blue-200">
               <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <DollarSign className="w-5 h-5 text-blue-600" />
@@ -793,7 +641,7 @@ export default function CrearTandaView({ setTandaData, setLoading, setError, loa
               </div>
             </div>
 
-            {/* Botón de Crear - SIEMPRE AZUL */}
+            {/* Botón de Crear */}
             <div className="pt-4 border-t-2 border-gray-200">
               <button
                 type="submit"

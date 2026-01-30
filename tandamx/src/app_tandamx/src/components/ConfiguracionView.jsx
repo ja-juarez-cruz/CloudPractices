@@ -1,11 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Settings, Save, Trash2, AlertTriangle, DollarSign, Calendar, Clock, X, Info, Users, Download, Share2, Gift } from 'lucide-react';
-import html2canvas from 'html2canvas';
 import { calcularFechasRondas, formatearFechaLarga, obtenerFechaHoyISO } from '../utils/tandaCalculos';
+import {
+  exportarCalendarioComoImagen,
+  enviarCalendarioComoImagen
+} from '../utils/tandaExport';
+
 
 const API_BASE_URL = 'https://9l2vrevqm1.execute-api.us-east-1.amazonaws.com/dev';
 
-export default function ConfiguracionView({ tandaData, setTandaData, loadAdminData, setActiveView }) {
+export default function ConfiguracionView({ tandaData, setTandaData, loadAdminData }) {
+  const navigate = useNavigate(); // 🆕 Hook de navegación
+  
   const [formData, setFormData] = useState({
     nombre: tandaData?.nombre || '',
     montoPorRonda: tandaData?.montoPorRonda || '',
@@ -37,194 +44,58 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
     }
   }, [tandaData]);
 
-  // Función para exportar como imagen
+
   const exportarComoImagen = async () => {
     if (!fechasCalendarRef.current) return;
 
     setExportando(true);
     try {
-      const contenedorScroll = fechasCalendarRef.current.querySelector('.scroll-container');
-      const estiloOriginal = {
-        maxHeight: contenedorScroll.style.maxHeight,
-        overflowY: contenedorScroll.style.overflowY
-      };
-
-      contenedorScroll.style.maxHeight = 'none';
-      contenedorScroll.style.overflowY = 'visible';
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      const canvas = await html2canvas(fechasCalendarRef.current, {
-        backgroundColor: '#ffffff',
-        scale: 2,
-        logging: false,
-        useCORS: true,
-        allowTaint: true,
-        windowWidth: fechasCalendarRef.current.scrollWidth,
-        windowHeight: fechasCalendarRef.current.scrollHeight
+      await exportarCalendarioComoImagen({
+        elementRef: fechasCalendarRef,
+        fileName: `calendario-${tandaData.nombre.replace(/\s+/g, '-')}.png`
       });
 
-      contenedorScroll.style.maxHeight = estiloOriginal.maxHeight;
-      contenedorScroll.style.overflowY = estiloOriginal.overflowY;
-
-      const blob = await new Promise((resolve) => {
-        canvas.toBlob(resolve, 'image/png');
-      });
-
-      const fileName = `calendario-${tandaData.nombre.replace(/\s+/g, '-')}.png`;
-      const isAndroidApp = /Android/i.test(navigator.userAgent) && 
-                          window.matchMedia('(display-mode: standalone)').matches;
-
-      if (isAndroidApp || (navigator.share && navigator.canShare)) {
-        const file = new File([blob], fileName, { type: 'image/png' });
-        
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          try {
-            await navigator.share({
-              files: [file],
-              title: `Calendario - ${tandaData.nombre}`,
-              text: esCumpleañera 
-                ? '🎂 Calendario de Cumpleaños de nuestra Tanda'
-                : '📅 Calendario de pagos de nuestra Tanda'
-            });
-            return;
-          } catch (err) {
-            if (err.name === 'AbortError') {
-              console.log('Compartir cancelado por el usuario');
-              return;
-            }
-            console.log('Share API falló, usando descarga tradicional');
-          }
-        }
-      }
-      
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-    } catch (error) {
-      console.error('Error exportando imagen:', error);
+      setSuccess('✅ Imagen exportada correctamente');
+    } catch (e) {
+      console.error(e);
       setError('Error al exportar la imagen');
     } finally {
       setExportando(false);
+      setTimeout(() => {
+        setSuccess(null);
+        setError(null);
+      }, 3000);
     }
   };
 
-  // Función para compartir por WhatsApp
   const compartirPorWhatsApp = async () => {
     if (!fechasCalendarRef.current) return;
 
     setExportando(true);
     try {
-      const contenedorScroll = fechasCalendarRef.current.querySelector('.scroll-container');
-      const estiloOriginal = {
-        maxHeight: contenedorScroll.style.maxHeight,
-        overflowY: contenedorScroll.style.overflowY
-      };
-
-      contenedorScroll.style.maxHeight = 'none';
-      contenedorScroll.style.overflowY = 'visible';
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      const canvas = await html2canvas(fechasCalendarRef.current, {
-        backgroundColor: '#ffffff',
-        scale: 2,
-        logging: false,
-        useCORS: true,
-        allowTaint: true,
-        windowWidth: fechasCalendarRef.current.scrollWidth,
-        windowHeight: fechasCalendarRef.current.scrollHeight
+      await enviarCalendarioComoImagen({
+        elementRef: fechasCalendarRef,
+        fileName: `calendario-${tandaData.nombre.replace(/\s+/g, '-')}.png`,
+        mensaje: esCumpleañera
+          ? `🎂 Calendario de Cumpleaños\n\nTanda: ${tandaData.nombre}`
+          : `📅 Calendario de Pagos\n\nTanda: ${tandaData.nombre}`
       });
 
-      contenedorScroll.style.maxHeight = estiloOriginal.maxHeight;
-      contenedorScroll.style.overflowY = estiloOriginal.overflowY;
-
-      const blob = await new Promise((resolve) => {
-        canvas.toBlob(resolve, 'image/png');
-      });
-
-      const fileName = `calendario-${tandaData.nombre.replace(/\s+/g, '-')}.png`;
-      const file = new File([blob], fileName, { type: 'image/png' });
-      const isAndroidApp = /Android/i.test(navigator.userAgent) && 
-                          window.matchMedia('(display-mode: standalone)').matches;
-      
-      const mensajeTexto = esCumpleañera 
-        ? `🎂 *Calendario de Cumpleaños*\n\nTanda: ${tandaData.nombre}\n\n¡Aquí está el calendario con las fechas de pago!`
-        : `📅 *Calendario de Pagos*\n\nTanda: ${tandaData.nombre}\n\n¡Aquí está el calendario con las fechas de pago!`;
-
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: `Calendario - ${tandaData.nombre}`,
-            text: mensajeTexto
-          });
-          return;
-        } catch (err) {
-          if (err.name === 'AbortError') {
-            console.log('Compartir cancelado por el usuario');
-            return;
-          }
-          console.log('Share API falló, intentando fallback:', err);
-        }
-      }
-
-      if (navigator.share) {
-        try {
-          await navigator.share({
-            title: `Calendario - ${tandaData.nombre}`,
-            text: mensajeTexto + '\n\nNota: Descarga la imagen para adjuntarla.'
-          });
-          
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = fileName;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-          
-          return;
-        } catch (err) {
-          if (err.name === 'AbortError') {
-            console.log('Compartir cancelado por el usuario');
-            return;
-          }
-        }
-      }
-
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(mensajeTexto + '\n\n(Imagen descargada - adjúntala manualmente)')}`;
-      
-      setTimeout(() => {
-        window.open(whatsappUrl, '_blank');
-      }, 500);
-
-      if (isAndroidApp) {
-        alert('📥 Imagen descargada\n\nAhora puedes:\n1. Adjuntarla en la conversación de WhatsApp\n2. Enviarla junto con el mensaje');
-      }
-
-    } catch (error) {
-      console.error('Error compartiendo:', error);
-      setError('Error al compartir la imagen');
+      setSuccess('✅ Calendario compartido');
+    } catch (e) {
+      console.error(e);
+      setError('Error al compartir el calendario');
     } finally {
       setExportando(false);
+      setTimeout(() => {
+        setSuccess(null);
+        setError(null);
+      }, 3000);
     }
   };
 
+
+  
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -331,7 +202,7 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
         
         setTimeout(() => {
           setTandaData(null);
-          setActiveView('inicio');
+          navigate('/inicio'); // 🔄 CAMBIO: usar navigate en lugar de setActiveView
           loadAdminData();
         }, 1500);
       }
@@ -342,6 +213,7 @@ export default function ConfiguracionView({ tandaData, setTandaData, loadAdminDa
       setLoading(false);
     }
   };
+
 
   if (!tandaData) return null;
 

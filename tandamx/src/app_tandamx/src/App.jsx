@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Users, Calendar, CreditCard, Settings, Share2, Check, MessageCircle, AlertCircle, CheckCircle, ArrowLeft, Menu, X } from 'lucide-react';
+import { HashRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { AlertCircle } from 'lucide-react';
 
 // Importar componentes
 import DashboardView from './components/DashboardView';
@@ -11,14 +12,14 @@ import InicioView from './components/InicioView';
 import RegistroPublicoView from './components/RegistroPublicoView';
 import GlobalHeader from './components/GlobalHeader';
 import ConfiguracionAppView from './components/ConfiguracionAppView';
-import LoginView from './components/LoginView';
+import LoginView from './components/Loginview';
 import PublicBoard from './components/PublicBoard';
-import RegistroCumpleView from './components/RegistroCumpleanosView'
+import RegistroCumpleView from './components/RegistroCumpleanosView';
 import DeleteAccountView from './components/DeleteAccountView';
+import BottomNavigation from './components/BottomNavigation';
 
-// Importar logos
-import logoTanda from './public/assets/logos/logo-tanda-512.png';
-import logoTandaSvg from './public/assets/logos/logo-tanda.svg';
+// Hooks personalizados
+import { useAndroidBackButton } from './hooks/useAndroidBackButton';
 
 // ===========================================
 // CONFIGURACIÓN DE LA API
@@ -33,8 +34,6 @@ const api = {
     localStorage.removeItem('userId');
     localStorage.removeItem('userEmail');
     localStorage.removeItem('userName');
-    localStorage.removeItem('activeView');
-    localStorage.removeItem('selectedTandaId');
   },
   
   getHeaders: () => {
@@ -135,119 +134,114 @@ const api = {
 };
 
 // ===========================================
+// COMPONENTE WRAPPER PARA ADMIN
+// ===========================================
+function AdminLayout({ children, userData, onLogout, onOpenSettings, showBottomNav = false }) {
+  return (
+    <>
+      <GlobalHeader 
+        userName={userData.nombre}
+        userEmail={userData.email}
+        onLogout={onLogout}
+        onOpenSettings={onOpenSettings}
+      />
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-slate-50">
+        {children}
+      </div>
+      {showBottomNav && <BottomNavigation />}
+    </>
+  );
+}
+
+// ===========================================
 // COMPONENTE PRINCIPAL
 // ===========================================
-export default function TandaManager() {
+function TandaManager() {
   // ========== ESTADOS PRINCIPALES ==========
-  const [currentView, setCurrentView] = useState('login');
+  const navigate = useNavigate();
+  const location = useLocation();
+  
   const [isAdmin, setIsAdmin] = useState(false);
   const [tandaData, setTandaData] = useState(null);
   const [todasLasTandas, setTodasLasTandas] = useState([]);
-  const [activeView, setActiveView] = useState('inicio');
-  const [showAppSettings, setShowAppSettings] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [estadisticas, setEstadisticas] = useState(null);
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   // Estados de usuario
-  const [userName, setUserName] = useState('');
-  const [userEmail, setUserEmail] = useState('');
-  const [userPhone, setUserPhone] = useState('');
+  const [userData, setUserData] = useState({
+    nombre: '',
+    email: '',
+    telefono: ''
+  });
 
   // Estados para manejo de sesión
   const [showSessionModal, setShowSessionModal] = useState(false);
   const lastActivityRef = useRef(Date.now());
 
-  
-  // ========== PERSISTENCIA DE ESTADO ==========
-  useEffect(() => {
-    if (isAdmin && tandaData?.tandaId) {
-      localStorage.setItem('selectedTandaId', tandaData.tandaId);
-      localStorage.setItem('activeView', activeView);
-    }
-  }, [activeView, tandaData?.tandaId, isAdmin]);
+  // ========== HOOK PARA BOTÓN FÍSICO DE ANDROID ==========
+  useAndroidBackButton();
 
+  // ========== VERIFICAR SI ES RUTA PÚBLICA ==========
+  const isPublicRoute = useCallback(() => {
+    const publicPaths = [
+      '/registro/',
+      '/registro-cumple/',
+      '/public-board/',
+      '/delete-account'
+    ];
 
-  // ========== DETECCIÓN DE URL PARAMS ==========
-  useEffect(() => {
-    const hash = window.location.hash;
+    const currentPath = location.pathname;
+    const isPublic = publicPaths.some(path => currentPath.startsWith(path));
     
-    // 🆕 PRIORIDAD 0: DELETE ACCOUNT (antes que todo)
-    if (hash === '#/delete-account') {
-      console.log('🗑️ Detectada ruta de eliminación de cuenta');
-      setCurrentView('delete-account');
-      setIsAdmin(false);
+    console.log('🔍 Verificando ruta:', {
+      currentPath,
+      isPublic,
+      publicPaths
+    });
+
+    return isPublic;
+  }, [location.pathname]);
+
+  // ========== INICIALIZACIÓN ==========
+  useEffect(() => {
+    // 🔄 NO inicializar si estamos en una ruta pública
+    if (isPublicRoute()) {
+      console.log('🌐 Ruta pública detectada, saltando inicialización de sesión');
       return;
     }
 
-    
-    // 🆕 PRIORIDAD 1: REGISTRO CUMPLEAÑERO
-    if (hash.startsWith('#/registro-cumple/')) {
-      const token = hash.split('#/registro-cumple/')[1];
-      console.log('🎂 Detectada ruta de registro cumpleañero, token:', token);
-      setCurrentView('registro-cumple');
-      setTandaData({ registroToken: token });
-      setIsAdmin(false); // 🔧 IMPORTANTE: Forzar que no esté en modo admin
-      return; // 🔧 IMPORTANTE: Salir inmediatamente
-    }
-    
-    // PRIORIDAD 2: REGISTRO NORMAL
-    if (hash.startsWith('#/registro/')) {
-      const token = hash.split('#/registro/')[1];
-      console.log('📝 Detectada ruta de registro normal, token:', token);
-      setCurrentView('registro');
-      setTandaData({ registroToken: token });
-      setIsAdmin(false); // 🔧 IMPORTANTE: Forzar que no esté en modo admin
-      return; // 🔧 IMPORTANTE: Salir inmediatamente
-    }
-    
-    // PRIORIDAD 3: TABLERO PÚBLICO
-    const urlParams = new URLSearchParams(window.location.search);
-    const tandaId = urlParams.get('tanda');
-    
-    if (tandaId) {
-      console.log('📊 Detectada ruta pública, tandaId:', tandaId);
-      setCurrentView('public');
-      loadPublicData(tandaId);
-      setIsAdmin(false); // 🔧 IMPORTANTE: Forzar que no esté en modo admin
-      return;
-    }
-    
-    // PRIORIDAD 4: RESTAURAR SESIÓN (solo si no hay rutas públicas)
-    const restoreState = async () => {
+    const initializeApp = async () => {
       const token = api.getToken();
-      const savedView = localStorage.getItem('activeView');
-      const savedTandaId = localStorage.getItem('selectedTandaId');
       const savedUserName = localStorage.getItem('userName');
       const savedUserEmail = localStorage.getItem('userEmail');
 
       if (token && savedUserName && savedUserEmail) {
+        console.log('✅ Sesión encontrada, inicializando admin');
         setIsAdmin(true);
-        setCurrentView('admin');
-        setUserName(savedUserName);
-        setUserEmail(savedUserEmail);
-
-        // Restaurar vista activa
-        if (savedView && savedView !== 'inicio' && savedView !== 'crear') {
-          setActiveView(savedView);
-        } else {
-          setActiveView('inicio');
-        }
-
-        // Cargar todas las tandas
+        setUserData({
+          nombre: savedUserName,
+          email: savedUserEmail,
+          telefono: ''
+        });
         await loadAdminData();
-
-        // Si había una tanda seleccionada, restaurarla
-        if (savedTandaId && savedView !== 'inicio') {
-          await seleccionarTanda(savedTandaId, false);
+        
+        // Si no estamos en una ruta específica, ir al inicio
+        if (location.pathname === '/') {
+          navigate('/inicio', { replace: true });
+        }
+      } else {
+        console.log('❌ No hay sesión, redirigiendo a login si es necesario');
+        // Solo redirigir a login si no estamos ya en login
+        if (location.pathname !== '/login' && location.pathname !== '/') {
+          navigate('/login', { replace: true });
         }
       }
     };
 
-    restoreState();
-  }, []);
-  
+    initializeApp();
+  }, [location.pathname, isPublicRoute, navigate]); // Agregar dependencias
+
   // ========== DETECCIÓN DE TOKEN EXPIRADO ==========
   useEffect(() => {
     const handleTokenExpired = () => {
@@ -262,10 +256,7 @@ export default function TandaManager() {
     };
 
     window.addEventListener('token-expired', handleTokenExpired);
-    
-    return () => {
-      window.removeEventListener('token-expired', handleTokenExpired);
-    };
+    return () => window.removeEventListener('token-expired', handleTokenExpired);
   }, [isAdmin]);
 
   // ========== DETECCIÓN DE ACTIVIDAD ==========
@@ -276,36 +267,15 @@ export default function TandaManager() {
       lastActivityRef.current = Date.now();
     };
 
-    window.addEventListener('mousemove', updateActivity);
-    window.addEventListener('keydown', updateActivity);
-    window.addEventListener('click', updateActivity);
-    window.addEventListener('scroll', updateActivity);
-
+    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+    events.forEach(event => window.addEventListener(event, updateActivity));
+    
     return () => {
-      window.removeEventListener('mousemove', updateActivity);
-      window.removeEventListener('keydown', updateActivity);
-      window.removeEventListener('click', updateActivity);
-      window.removeEventListener('scroll', updateActivity);
+      events.forEach(event => window.removeEventListener(event, updateActivity));
     };
   }, [isAdmin]);
 
   // ========== FUNCIONES DE CARGA DE DATOS ==========
-  const loadPublicData = async (tandaId) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await api.tandas.obtener(tandaId);
-      if (result.success) {
-        setTandaData(result.data);
-      }
-    } catch (error) {
-      console.error('Error cargando tanda pública:', error);
-      setError('Error al cargar la tanda pública');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const loadAdminData = async () => {
     setLoading(true);
     setError(null);
@@ -316,7 +286,7 @@ export default function TandaManager() {
         const tandas = result.data?.tandas || [];
         setTodasLasTandas(tandas);
         
-        // Si hay una tanda cargada actualmente, refrescar sus datos
+        // Si hay una tanda cargada, refrescar sus datos
         if (tandaData?.tandaId) {
           const tandaDetail = await api.tandas.obtener(tandaData.tandaId);
           if (tandaDetail.success) {
@@ -350,40 +320,14 @@ export default function TandaManager() {
     }
   };
 
-  // ========== RECARGAR DATOS AL CAMBIAR VISTA ==========
-  useEffect(() => {
-    if (tandaData?.tandaId && ['dashboard', 'participantes', 'pagos'].includes(activeView)) {
-      const recargarDatos = async () => {
-        try {
-          const tandaDetail = await api.tandas.obtener(tandaData.tandaId);
-          if (tandaDetail.success) {
-            setTandaData(tandaDetail.data);
-            
-            if (activeView === 'dashboard') {
-              await loadEstadisticas(tandaDetail.data.tandaId);
-            }
-          }
-        } catch (error) {
-          console.error('Error recargando datos:', error);
-        }
-      };
-      
-      recargarDatos();
-    }
-  }, [activeView]);
-
-  // ========== FUNCIONES DE NAVEGACIÓN ==========
-  const seleccionarTanda = async (tandaId, cambiarVista = true) => {
+  const seleccionarTanda = async (tandaId) => {
     setLoading(true);
     try {
       const tandaDetail = await api.tandas.obtener(tandaId);
       if (tandaDetail.success) {
         setTandaData(tandaDetail.data);
         await loadEstadisticas(tandaId);
-        if (cambiarVista) {
-          setActiveView('dashboard');
-        }
-        setShowMobileMenu(false);
+        navigate('/dashboard');
       }
     } catch (error) {
       console.error('Error cargando tanda:', error);
@@ -393,32 +337,16 @@ export default function TandaManager() {
     }
   };
 
-  const crearNuevaTanda = () => {
-    setTandaData(null);
-    setActiveView('crear');
-    setShowMobileMenu(false);
-  };
-
-  const volverAInicio = () => {
-    setTandaData(null);
-    setActiveView('inicio');
-    localStorage.removeItem('selectedTandaId');
-    localStorage.removeItem('activeView');
-    setShowMobileMenu(false);
-  };
-
   // ========== FUNCIONES DE AUTENTICACIÓN ==========
   const handleLogout = () => {
     api.auth.logout();
     setIsAdmin(false);
     setTandaData(null);
-    setCurrentView('login');
-    setUserName('');
-    setUserEmail('');
-    setUserPhone('');
+    setUserData({ nombre: '', email: '', telefono: '' });
+    navigate('/login');
   };
 
-  const handleLoginSuccess = useCallback(async (userData) => {
+  const handleLoginSuccess = useCallback(async (loginData) => {
     const token = localStorage.getItem('authToken');
     
     if (!token) {
@@ -428,23 +356,24 @@ export default function TandaManager() {
     }
     
     setIsAdmin(true);
-    setCurrentView('admin');
-    setActiveView('inicio');
-    setTandaData(null);
-    setUserName(userData.nombre || '');
-    setUserEmail(userData.email || '');
+    setUserData({
+      nombre: loginData.nombre || '',
+      email: loginData.email || '',
+      telefono: ''
+    });
     
     await loadAdminData();
-  }, []);
+    navigate('/inicio');
+  }, [navigate]);
 
   const handleSessionExpiredLogout = () => {
     api.auth.logout();
     setIsAdmin(false);
-    setCurrentView('login');
     setShowSessionModal(false);
     setTandaData(null);
     setTodasLasTandas([]);
     setError('Tu sesión ha expirado. Por favor inicia sesión nuevamente.');
+    navigate('/login');
   };
 
   const handleContinueSession = () => {
@@ -453,282 +382,258 @@ export default function TandaManager() {
     handleSessionExpiredLogout();
   };
 
-  // ========== HANDLER PARA TANDA CREADA ==========
   const handleTandaCreada = useCallback((nuevaTanda) => {
     console.log('✅ Tanda creada exitosamente:', nuevaTanda);
     setTandaData(nuevaTanda);
-    setActiveView('participantes');
-    loadAdminData(); // Recargar lista de tandas
-  }, []);
+    navigate('/participantes');
+    loadAdminData();
+  }, [navigate]);
 
   // ===========================================
-  // BOTTOM NAVIGATION COMPONENT
+  // COMPONENTES DE RUTAS
   // ===========================================
-  const BottomNavigation = () => {
-    const navItems = [
-      { id: 'dashboard', label: 'Resumen', icon: Calendar },
-      { id: 'participantes', label: 'Participantes', icon: Users },
-      { id: 'pagos', label: 'Pagos', icon: CreditCard },
-      { id: 'configuracion', label: 'Config', icon: Settings },
-    ];
+  const PrivateRoute = ({ children }) => {
+    // 🔄 NO redirigir si estamos en ruta pública
+    if (isPublicRoute()) {
+      console.log('✅ PrivateRoute: Ruta pública, permitiendo acceso');
+      return children;
+    }
+    
+    if (!isAdmin) {
+      console.log('❌ PrivateRoute: No autenticado, redirigiendo a login');
+      return <Navigate to="/login" replace />;
+    }
+    
+    console.log('✅ PrivateRoute: Autenticado, permitiendo acceso');
+    return children;
+  };
 
-    return (
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-200 shadow-2xl z-40 safe-bottom">
-        <div className="max-w-7xl mx-auto px-2">
-          <div className="flex justify-around items-center h-16">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeView === item.id;
-              
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveView(item.id);
-                    setShowMobileMenu(false);
-                  }}
-                  className={`flex flex-col items-center justify-center flex-1 h-full transition-all relative ${
-                    isActive ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {/* Indicador superior */}
-                  {isActive && (
-                    <div className="absolute top-0 left-0 right-0 h-1 bg-blue-600 rounded-b-full"></div>
-                  )}
-                  
-                  {/* Ícono con efecto */}
-                  <div className={`relative ${isActive ? 'transform -translate-y-1' : ''}`}>
-                    <Icon className={`w-6 h-6 transition-all ${
-                      isActive ? 'scale-110' : ''
-                    }`} />
-                    
-                    {/* Badge de notificación (ejemplo) */}
-                    {item.id === 'pagos' && isActive && (
-                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></div>
-                    )}
-                  </div>
-                  
-                  {/* Label */}
-                  <span className={`text-xs mt-1 font-medium ${
-                    isActive ? 'font-bold' : ''
-                  }`}>
-                    {item.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
+  const PublicRoute = ({ children }) => {
+    // 🔄 Login SIEMPRE redirige a /inicio si hay sesión
+    if (isAdmin && location.pathname === '/login') {
+      console.log('🔄 PublicRoute: Ya autenticado, redirigiendo a inicio');
+      return <Navigate to="/inicio" replace />;
+    }
+    return children;
   };
 
   // ===========================================
-  // PANEL ADMIN
+  // RENDER
   // ===========================================
-  const AdminPanel = () => {
-    // Vista de configuración de app
-    if (showAppSettings) {
-      return (
-        <>
-          <GlobalHeader 
-            userName={userName}
-            userEmail={userEmail}
-            onLogout={handleLogout}
-            onOpenSettings={() => setShowAppSettings(true)}
-            onGoHome={volverAInicio}
-            showHomeButton={tandaData !== null}
-            currentTandaName={tandaData?.nombre}
-          />
-          <div className="pb-20">
-            <ConfiguracionAppView
-              userData={{ nombre: userName, email: userEmail, telefono: userPhone }}
-              onBack={() => setShowAppSettings(false)}
-              onAccountDeleted={handleLogout}
-              onGoHome={volverAInicio}
-              showHomeButton={tandaData !== null}
-              currentTandaName={tandaData?.nombre}
-            />
-          </div>
-        </>
-      );
-    }
+  return (
+    <>
+      <Routes>
+        {/* ========== RUTAS COMPLETAMENTE PÚBLICAS ========== */}
+        {/* 🔥 ESTAS RUTAS NUNCA DEBEN REDIRIGIR */}
+        <Route path="/registro/:token" element={<RegistroPublicoView />} />
+        <Route path="/registro-cumple/:token" element={<RegistroCumpleView />} />
+        <Route path="/public-board/:tandaId" element={<PublicBoard />} />
+        <Route path="/delete-account" element={<DeleteAccountView />} />
 
-    // Vista de Crear Tanda
-    if (activeView === 'crear') {
-      return (
-        <>
-          <GlobalHeader 
-            userName={userName}
-            userEmail={userEmail}
-            onLogout={handleLogout}
-            onOpenSettings={() => setShowAppSettings(true)}
-            onGoHome={volverAInicio}
-            showHomeButton={tandaData !== null}
-            currentTandaName={tandaData?.nombre}
-          />
-          <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-slate-50 pb-20">
-            <div className="max-w-7xl mx-auto p-4 md:p-8 pt-8">
-              <div className="mb-6 flex items-center justify-between">
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Crear Nueva Tanda</h1>
-                  <p className="text-sm text-gray-600">Configura los detalles de tu nueva tanda</p>
-                </div>
-                <button
-                  onClick={volverAInicio}
-                  className="flex items-center gap-2 px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-semibold text-sm"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  Cancelar
-                </button>
-              </div>
-              <CrearTandaView
-                setTandaData={handleTandaCreada}
-                setActiveView={setActiveView}
-                setLoading={setLoading}
-                setError={setError}
-                loadAdminData={loadAdminData}
-              />
-            </div>
-          </div>
-        </>
-      );
-    }
+        {/* ========== RUTA DE LOGIN ========== */}
+        <Route path="/login" element={
+          <PublicRoute>
+            <LoginView onLoginSuccess={handleLoginSuccess} />
+          </PublicRoute>
+        } />
 
-    // Vista de Inicio (sin tanda seleccionada)
-    if (!tandaData || activeView === 'inicio') {
-      return (
-        <>
-          <GlobalHeader 
-            userName={userName}
-            userEmail={userEmail}
-            onLogout={handleLogout}
-            onOpenSettings={() => setShowAppSettings(true)}
-            onGoHome={volverAInicio}
-            showHomeButton={tandaData !== null}
-            currentTandaName={tandaData?.nombre}
-          />
-          <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-slate-50 pb-20">
-            <div className="max-w-7xl mx-auto p-4 md:p-8 pt-8">
-              <InicioView 
-                tandas={todasLasTandas}
-                setActiveView={setActiveView}
-                onSeleccionarTanda={seleccionarTanda}
-                onCrearNueva={crearNuevaTanda}
-              />
-            </div>
-          </div>
-        </>
-      );
-    }
-
-    // Vista principal con tanda seleccionada
-    return (
-      <>
-        {/* Header Global */}
-        <GlobalHeader 
-          userName={userName}
-          userEmail={userEmail}
-          onLogout={handleLogout}
-          onOpenSettings={() => setShowAppSettings(true)}
-          onGoHome={volverAInicio}
-          showHomeButton={tandaData !== null}
-          currentTandaName={tandaData?.nombre}
-        />
-
-        {/* Content con padding inferior para el bottom nav */}
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-slate-50 pb-24">
-          <div className="max-w-7xl mx-auto p-4 md:p-8">
-            {activeView === 'dashboard' && <DashboardView tandaData={tandaData} estadisticas={estadisticas} onCrearTanda={crearNuevaTanda} />}
-            {activeView === 'participantes' && <ParticipantesView tandaData={tandaData} setTandaData={setTandaData} loadAdminData={loadAdminData} />}
-            {activeView === 'pagos' && <PagosView tandaData={tandaData} setTandaData={setTandaData} loadAdminData={loadAdminData} />}
-            {activeView === 'configuracion' && <ConfiguracionView tandaData={tandaData} setTandaData={setTandaData} loadAdminData={loadAdminData} setActiveView={setActiveView} />}
-          </div>
-        </div>
-
-        {/* Bottom Navigation - Solo visible cuando hay tanda */}
-        <BottomNavigation />
-      </>
-    );
-  };
-
-  // ===========================================
-  // RENDER PRINCIPAL
-  // ===========================================
-
-  // ========== VISTA DE REGISTRO CUMPLEAÑERO ========== 🆕
-  if (currentView === 'registro-cumple') {
-    return <RegistroCumpleView token={tandaData?.registroToken} />;
-  }
-  
-  // ========== VISTA DE ELIMINACIÓN DE CUENTA ========== 🆕
-  if (currentView === 'delete-account') {
-    return <DeleteAccountView />;
-  }
-  
-  // ========== VISTA DE REGISTRO PÚBLICO ==========
-  if (currentView === 'registro') {
-    return <RegistroPublicoView token={tandaData?.registroToken} />;
-  }
-  
-  // ========== VISTA PÚBLICA - TABLERO ==========
-  if (currentView === 'public') {
-    return (
-      <PublicBoard 
-        tandaData={tandaData} 
-        loading={loading} 
-      />
-    );
-  }
-
-  // ========== VISTA ADMIN ==========
-  if (currentView === 'admin' && isAdmin) {
-    return (
-      <>
-        <AdminPanel />
+        {/* ========== RUTAS PRIVADAS ========== */}
         
-        {/* Modal de Sesión Expirada */}
-        {showSessionModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-[100]">
-            <div className="bg-white rounded-2xl max-w-md w-full p-6 animate-fadeIn">
-              <div className="text-center mb-6">
-                <div className="inline-block p-4 bg-yellow-100 rounded-full mb-4">
-                  <AlertCircle className="w-12 h-12 text-yellow-600" />
-                </div>
-                <h3 className="text-2xl font-bold text-gray-800 mb-2">Sesión Expirada</h3>
-                <p className="text-gray-600">
-                  Tu sesión ha expirado por seguridad. ¿Deseas continuar trabajando?
-                </p>
+        {/* Inicio - Sin Bottom Nav */}
+        <Route path="/inicio" element={
+          <PrivateRoute>
+            <AdminLayout 
+              userData={userData} 
+              onLogout={handleLogout} 
+              onOpenSettings={() => navigate('/configuracion-app')}
+              showBottomNav={false}
+            >
+              <div className="max-w-7xl mx-auto p-4 md:p-8 pt-8">
+                <InicioView 
+                  tandas={todasLasTandas}
+                  onSeleccionarTanda={seleccionarTanda}
+                  onCrearNueva={() => navigate('/crear-tanda')}
+                  loading={loading}
+                />
               </div>
+            </AdminLayout>
+          </PrivateRoute>
+        } />
 
-              <div className="space-y-3">
-                <button
-                  onClick={handleContinueSession}
-                  className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
-                >
-                  Iniciar Sesión Nuevamente
-                </button>
-                
-                <button
-                  onClick={handleSessionExpiredLogout}
-                  className="w-full py-3 px-4 bg-gray-200 text-gray-800 rounded-xl font-semibold hover:bg-gray-300 transition-all"
-                >
-                  Cerrar Sesión
-                </button>
+        {/* Crear Tanda - Sin Bottom Nav */}
+        <Route path="/crear-tanda" element={
+          <PrivateRoute>
+            <AdminLayout 
+              userData={userData} 
+              onLogout={handleLogout} 
+              onOpenSettings={() => navigate('/configuracion-app')}
+              showBottomNav={false}
+            >
+              <div className="max-w-7xl mx-auto p-4 md:p-8 pt-8">
+                <CrearTandaView
+                  setTandaData={handleTandaCreada}
+                  setLoading={setLoading}
+                  setError={setError}
+                  loadAdminData={loadAdminData}
+                />
               </div>
+            </AdminLayout>
+          </PrivateRoute>
+        } />
 
-              <p className="text-xs text-gray-500 text-center mt-4">
-                Por tu seguridad, cerramos sesiones automáticamente después de un período de inactividad.
+        {/* Dashboard - CON Bottom Nav */}
+        <Route path="/dashboard" element={
+          <PrivateRoute>
+            <AdminLayout 
+              userData={userData} 
+              onLogout={handleLogout} 
+              onOpenSettings={() => navigate('/configuracion-app')}
+              showBottomNav={true}
+            >
+              <div className="max-w-7xl mx-auto p-4 md:p-8 pb-24">
+                <DashboardView 
+                  tandaData={tandaData} 
+                  estadisticas={estadisticas}
+                  onCrearTanda={() => navigate('/crear-tanda')}
+                />
+              </div>
+            </AdminLayout>
+          </PrivateRoute>
+        } />
+
+        {/* Participantes - CON Bottom Nav */}
+        <Route path="/participantes" element={
+          <PrivateRoute>
+            <AdminLayout 
+              userData={userData} 
+              onLogout={handleLogout} 
+              onOpenSettings={() => navigate('/configuracion-app')}
+              showBottomNav={true}
+            >
+              <div className="max-w-7xl mx-auto p-4 md:p-8 pb-24">
+                <ParticipantesView 
+                  tandaData={tandaData} 
+                  setTandaData={setTandaData} 
+                  loadAdminData={loadAdminData}
+                />
+              </div>
+            </AdminLayout>
+          </PrivateRoute>
+        } />
+
+        {/* Pagos - CON Bottom Nav */}
+        <Route path="/pagos" element={
+          <PrivateRoute>
+            <AdminLayout 
+              userData={userData} 
+              onLogout={handleLogout} 
+              onOpenSettings={() => navigate('/configuracion-app')}
+              showBottomNav={true}
+            >
+              <div className="max-w-7xl mx-auto p-4 md:p-8 pb-24">
+                <PagosView 
+                  tandaData={tandaData} 
+                  setTandaData={setTandaData} 
+                  loadAdminData={loadAdminData}
+                />
+              </div>
+            </AdminLayout>
+          </PrivateRoute>
+        } />
+
+        {/* Configuración - CON Bottom Nav */}
+        <Route path="/configuracion" element={
+          <PrivateRoute>
+            <AdminLayout 
+              userData={userData} 
+              onLogout={handleLogout} 
+              onOpenSettings={() => navigate('/configuracion-app')}
+              showBottomNav={true}
+            >
+              <div className="max-w-7xl mx-auto p-4 md:p-8 pb-24">
+                <ConfiguracionView 
+                  tandaData={tandaData} 
+                  setTandaData={setTandaData} 
+                  loadAdminData={loadAdminData}
+                />
+              </div>
+            </AdminLayout>
+          </PrivateRoute>
+        } />
+
+        {/* Configuración App - Sin Bottom Nav */}
+        <Route path="/configuracion-app" element={
+          <PrivateRoute>
+            <AdminLayout 
+              userData={userData} 
+              onLogout={handleLogout} 
+              onOpenSettings={() => navigate('/configuracion-app')}
+              showBottomNav={false}
+            >
+              <div className="pb-20">
+                <ConfiguracionAppView
+                  userData={userData}
+                  onAccountDeleted={handleLogout}
+                />
+              </div>
+            </AdminLayout>
+          </PrivateRoute>
+        } />
+
+        {/* ========== REDIRECCIONES ========== */}
+        <Route path="/" element={<Navigate to={isAdmin ? "/inicio" : "/login"} replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+
+      {/* ========== MODAL DE SESIÓN EXPIRADA ========== */}
+      {showSessionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-[100]">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 animate-fadeIn">
+            <div className="text-center mb-6">
+              <div className="inline-block p-4 bg-yellow-100 rounded-full mb-4">
+                <AlertCircle className="w-12 h-12 text-yellow-600" />
+              </div>
+              <h3 className="text-2xl font-bold text-gray-800 mb-2">Sesión Expirada</h3>
+              <p className="text-gray-600">
+                Tu sesión ha expirado por seguridad. ¿Deseas continuar trabajando?
               </p>
             </div>
-          </div>
-        )}
-      </>
-    );
-  }
 
-  // ========== VISTA LOGIN (DEFAULT) ==========
-  return <LoginView onLoginSuccess={handleLoginSuccess} />;
+            <div className="space-y-3">
+              <button
+                onClick={handleContinueSession}
+                className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
+              >
+                Iniciar Sesión Nuevamente
+              </button>
+              
+              <button
+                onClick={handleSessionExpiredLogout}
+                className="w-full py-3 px-4 bg-gray-200 text-gray-800 rounded-xl font-semibold hover:bg-gray-300 transition-all"
+              >
+                Cerrar Sesión
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-500 text-center mt-4">
+              Por tu seguridad, cerramos sesiones automáticamente después de un período de inactividad.
+            </p>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ===========================================
+// WRAPPER CON ROUTER
+// ===========================================
+export default function App() {
+  return (
+    <Router>
+      <TandaManager />
+    </Router>
+  );
 }
 
 // ===========================================
@@ -751,17 +656,14 @@ if (typeof document !== 'undefined') {
       animation: fadeIn 0.3s ease-out;
     }
 
-    /* Safe area para dispositivos con notch */
     .safe-bottom {
       padding-bottom: env(safe-area-inset-bottom);
     }
 
-    /* Smooth scroll */
     html {
       scroll-behavior: smooth;
     }
 
-    /* Prevenir scroll horizontal */
     body {
       overflow-x: hidden;
     }

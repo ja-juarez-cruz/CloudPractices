@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Users, CheckCircle, Calendar, DollarSign, AlertCircle, Loader, Shield } from 'lucide-react';
 import { calcularFechasRondas } from '../utils/tandaCalculos';
+import { useParams, useNavigate } from 'react-router-dom';
 
 const API_BASE_URL = 'https://9l2vrevqm1.execute-api.us-east-1.amazonaws.com/dev';
 
-export default function RegistroPublicoView({ token }) {
+export default function RegistroPublicoView() {
+  const navigate = useNavigate();
+  const { token } = useParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [tandaData, setTandaData] = useState(null);
@@ -96,7 +99,7 @@ export default function RegistroPublicoView({ token }) {
         if (numerosDisponibles.length === 0) {
           setTandaCompleta(true);
           setTimeout(() => {
-            window.location.href = `/index.html?tanda=${data.data.tandaId}`;
+            navigate(`/public-board/${data.data.tandaId}`); // 🔄 CAMBIO
           }, 3000);
         }
         
@@ -327,7 +330,7 @@ export default function RegistroPublicoView({ token }) {
         console.log('✅ Registro exitoso');
         setRegistroExitoso(true);
         setTimeout(() => {
-          window.location.href = `/index.html?tanda=${tandaData.tandaId}`;
+          navigate(`/public-board/${tandaData.tandaId}`); // 🔄 CAMBIO
         }, 2000);
       }
     } catch (error) {
@@ -362,7 +365,7 @@ export default function RegistroPublicoView({ token }) {
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Error</h2>
             <p className="text-gray-600 mb-6">{error}</p>
             <button
-              onClick={() => window.location.href = '/index.html'}
+              onClick={() => navigate('/login')} // 🔄 CAMBIO
               className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
             >
               Ir al Inicio

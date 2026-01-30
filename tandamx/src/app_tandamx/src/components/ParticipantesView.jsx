@@ -1,5 +1,6 @@
 // ParticipantesView.jsx - REFACTORIZADO
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Users, Plus, Edit, Trash2, X, Save, Phone, Mail, MessageCircle, Link as LinkIcon, Copy, Check, ArrowLeft, AlertCircle, MessageSquare, FileText, MoreVertical, Calendar, Gift } from 'lucide-react';
 import { calcularFechaRonda, calcularNumeroAutomaticoCumpleanos, obtenerRondaActualCumpleanos, calcularRondaActual } from '../utils/tandaCalculos';
 
@@ -7,6 +8,8 @@ const API_BASE_URL = 'https://9l2vrevqm1.execute-api.us-east-1.amazonaws.com/dev
 const BASE_URL_ESTATIC_WEB = "https://app-tandamx.s3.us-east-1.amazonaws.com";
 
 export default function ParticipantesView({ tandaData, setTandaData, loadAdminData, onBack }) {
+  const navigate = useNavigate(); // 🆕 Hook de navegación
+  
   // Estados
   const [showModal, setShowModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -426,7 +429,7 @@ ${linkRegistro.url}
   };
 
   const generarLinkPublico = () => {
-    return `${BASE_URL_ESTATIC_WEB}/index.html?tanda=${tandaData.tandaId}`;
+    return `${BASE_URL_ESTATIC_WEB}/index.html#/public-board/${tandaData.tandaId}`;
   };
 
   const enviarMensajePagoRealizado = (participante) => {
@@ -584,21 +587,21 @@ ${linkPublico}
     ? obtenerRondaActualCumpleanos(tandaData)
     : calcularRondaActual(tandaData);
 
+  
   return (
     <div className="space-y-6">
       {/* Header con navegación */}
       <div className="bg-white rounded-2xl shadow-lg p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4">
-            {onBack && (
-              <button
-                onClick={onBack}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Volver"
-              >
-                <ArrowLeft className="w-5 h-5 text-gray-600" />
-              </button>
-            )}
+            {/* 🔄 Cambiar onBack por navigate(-1) */}
+            <button
+              onClick={() => navigate(-1)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Volver"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
             <div>
               <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
                 {esCumpleañera ? <Gift className="w-7 h-7 text-blue-600" /> : <Users className="w-7 h-7 text-blue-600" />}
@@ -656,7 +659,8 @@ ${linkPublico}
               const fechaInicio = tandaData.fechaInicio ? new Date(tandaData.fechaInicio + 'T00:00:00') : null;
               const fechaPago = fechaInicio ? calcularFechaRonda(fechaInicio, participante.numeroAsignado, tandaData.frecuencia, esCumpleañera, participante.fechaCumpleaños) : null;
               const menuEstaAbierto = menuAbierto === participante.participanteId;
-              const esDeLosFinal = index >= participantesOrdenados.length - 3;
+              const totalParticipantes = participantesOrdenados.length;
+              const esDeLosFinal = totalParticipantes > 5 && index >= totalParticipantes - 3;
 
               return (
                 <tr 
@@ -841,6 +845,7 @@ ${linkPublico}
                               onClick={() => setMenuAbierto(null)}
                             ></div>
 
+                            {/* 🔄 CAMBIO: Lógica mejorada para la posición del menú */}
                             <div 
                               className={`absolute right-0 ${
                                 esDeLosFinal ? 'bottom-full mb-1' : 'top-full mt-1'
@@ -1130,7 +1135,7 @@ ${linkPublico}
                       <Gift className="w-4 h-4 mt-0.5 flex-shrink-0" />
                       <span>
                         {formData.fechaCumpleaños 
-                          ? `Tu número será: ${calcularNumeroAutomatico(formData.fechaCumpleaños)} (asignado automáticamente por fecha)`
+                          ? `Tu número será: ${calcularNumeroAutomaticoCumpleanos(formData.fechaCumpleaños)} (asignado automáticamente por fecha)`
                           : 'El número se asignará automáticamente según tu fecha de cumpleaños'}
                       </span>
                     </p>
